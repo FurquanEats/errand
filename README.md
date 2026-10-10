@@ -135,7 +135,7 @@ Details and reporting: [SECURITY.md](SECURITY.md).
 
 ## Code signing policy
 
-Windows downloads are built by [GitHub Actions](.github/workflows/release.yml) from the tagged source in this repository, and every signing request is approved by hand. Signing through the [SignPath Foundation](https://signpath.org) is being set up; until then Windows may say the publisher is unknown.
+Errand uses the [SignPath Foundation](https://signpath.org)'s free code signing for open-source projects for its Windows download (`Errand-Setup.exe`); the application is in review, and until it's approved Windows may say the publisher is unknown. Downloads are built by [GitHub Actions](.github/workflows/release.yml) from the tagged source in this repository, and every signing request is approved by hand.
 
 - Committers and reviewers: [Mohammed Furquan](https://github.com/FurquanEats)
 - Approvers: [Mohammed Furquan](https://github.com/FurquanEats)
