@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:e2e
+
+  install-unix:
+    name: Installer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install with no Node.js on PATH, then start Errand
+        env:
+          ERRAND_HOME: ${{ runner.temp }}/errand
+          ERRAND_REF: ${{ github.sha }}
+        run: |
+          # A bare PATH, like a fresh machine: the installer must fetch its own Node.js.
+          env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin ERRAND_HOME="$ERRAND_HOME" ERRAND_REF="$ERRAND_REF" \
+            bash scripts/install.sh > install.log 2>&1 &
+          for i in $(seq 1 240); do
+            if curl -fs --max-time 2 http://127.0.0.1:4747/api/status; then echo; echo "Errand is up"; break; fi
+            sleep 1
+          done
+          cat install.log
+          curl -fs http://127.0.0.1:4747/api/status
+          grep -q "Downloading Node.js" install.log
+          curl -fs http://127.0.0.1:4747/ | grep -q "<title>Errand"
+          test -x "$ERRAND_HOME/errand"
+
+  install-windows:
+    name: Installer (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install with no Node.js on PATH, then start Errand
+        shell: pwsh
+        env:
+          ERRAND_HOME: ${{ runner.temp }}\errand
+          ERRAND_REF: ${{ github.sha }}
+        run: |
+          $env:Path = "$env:SystemRoot\system32;$env:SystemRoot;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1 | Tee-Object install.log
+          $up = $false
+          for ($i = 0; $i -lt 120 -and -not $up; $i++) {
+            try { Invoke-WebRequest http://127.0.0.1:4747/api/status -UseBasicParsing -TimeoutSec 2 | Out-Null; $up = $true } catch { Start-Sleep 1 }
+          }
+          if (-not $up) { throw 'Errand did not start' }
+          if (-not (Select-String -Path install.log -Pattern 'Downloading Node.js' -Quiet)) { throw 'Node.js was not downloaded' }
+          if (-not (Test-Path "$env:ERRAND_HOME\Errand.cmd")) { throw 'Launcher missing' }
+          'Errand is up'
+          # Errand.exe was built, runs Errand with its icon by the clock, and is listed in Installed apps.
+          $exe = "$env:ERRAND_HOME\Errand.exe"
+          if (-not (Test-Path $exe)) { throw 'Errand.exe missing' }
+          $v = (Get-Item $exe).VersionInfo
+          if ($v.ProductName -ne 'Errand' -or -not $v.ProductVersion) { throw 'Errand.exe has no version info' }
+          if (-not (Get-Process Errand -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe })) { throw 'Errand.exe is not running' }
+          $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Errand'
+          if ((Get-ItemProperty $key).InstallLocation -ne $env:ERRAND_HOME) { throw 'Not listed in Installed apps' }
+          $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut("$([Environment]::GetFolderPath('Desktop'))\Errand.lnk")
+          if ($lnk.TargetPath -ne $exe) { throw "Shortcut opens $($lnk.TargetPath)" }
+
+      - name: Uninstall keeps your data
+        shell: pwsh
+        env:
+          ERRAND_HOME: ${{ runner.temp }}\errand
+        run: |
+          'chats' | Set-Content "$env:ERRAND_HOME\data\keep-me.txt"
+          Start-Process "$env:ERRAND_HOME\Errand.exe" '--uninstall --quiet' -Wait
+          for ($i = 0; $i -lt 30 -and (Test-Path "$env:ERRAND_HOME\app"); $i++) { Start-Sleep 1 }
+          if (Test-Path "$env:ERRAND_HOME\app") { throw 'App folder is still there' }
+          if (Test-Path "$env:ERRAND_HOME\Errand.exe") { throw 'Errand.exe is still there' }
+          if (-not (Test-Path "$env:ERRAND_HOME\data\keep-me.txt")) { throw 'Data was deleted' }
+          if (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Errand') { throw 'Still listed in Installed apps' }
+          if (Test-Path "$([Environment]::GetFolderPath('Desktop'))\Errand.lnk") { throw 'Desktop shortcut is still there' }
+          $up = $true
+          try { Invoke-WebRequest http://127.0.0.1:4747/api/status -UseBasicParsing -TimeoutSec 3 | Out-Null } catch { $up = $false }
+          if ($up) { throw 'Errand is still running' }
+          'Uninstalled; data kept'
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, start, and check the app and the live view are served
+        run: |
+          docker build -t errand .
+          docker run -d --name errand -p 4747:4747 -p 6080:6080 -e ERRAND_PASSWORD=ci-password -e VNC_PASSWORD=ci-vnc errand
+          for i in $(seq 1 90); do
+            if curl -fs --max-time 2 http://127.0.0.1:4747/ | grep -q "<title>Errand"; then echo "Errand is up"; break; fi
+            sleep 1
+          done
+          docker logs errand
+          curl -fs http://127.0.0.1:4747/ | grep -q "<title>Errand"
+          # The password is enforced over the network.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4747/api/status)" = 401
+          curl -fs http://127.0.0.1:6080/vnc.html > /dev/null
+          # The placeholder passwords from docker-compose.yml are refused.
+          ! timeout 60 docker run --rm -e ERRAND_PASSWORD=change-me -e VNC_PASSWORD=change-me-too errand

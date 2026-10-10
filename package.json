@@ -1,0 +1,84 @@
+{
+  "name": "errand",
+  "version": "1.0.0",
+  "description": "The free, open-source Hark: a personal AI agent that notices what needs doing in your email and does it. One chat that works real websites for you, keeps trackers up to date, remembers you, and plans ahead. Bring your own AI: your ChatGPT plan, OpenRouter, any API key, or a local model.",
+  "license": "MIT",
+  "author": "Mohammed Furquan, Zovle (https://zovle.in)",
+  "homepage": "https://github.com/FurquanEats/errand#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FurquanEats/errand.git"
+  },
+  "bugs": {
+    "url": "https://github.com/FurquanEats/errand/issues"
+  },
+  "keywords": [
+    "ai-agent",
+    "hark-alternative",
+    "proactive-assistant",
+    "personal-assistant",
+    "browser-agent",
+    "computer-use",
+    "self-hosted",
+    "open-source",
+    "byok",
+    "chatgpt",
+    "ollama",
+    "mcp",
+    "privacy"
+  ],
+  "type": "module",
+  "private": false,
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,magenta \"node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --import tsx --watch server/index.ts\" \"vite\"",
+    "build": "vite build",
+    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --import tsx server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test:e2e": "node --import tsx test/e2e/run.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.73",
+    "@ai-sdk/google": "^4.0.89",
+    "@ai-sdk/openai": "^4.0.85",
+    "@ai-sdk/openai-compatible": "^3.0.64",
+    "@ai-sdk/provider": "^4.0.23",
+    "@fontsource-variable/host-grotesk": "^5.3.0",
+    "@hono/node-server": "^2.1.3",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "ai": "^7.0.129",
+    "dompurify": "^3.4.16",
+    "hono": "^4.13.13",
+    "imapflow": "^2.2.6",
+    "mailparser": "^3.9.36",
+    "marked": "^18.1.0",
+    "node-ical": "^0.27.3",
+    "nodemailer": "^10.0.15",
+    "playwright-core": "^1.63.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "unpdf": "^1.8.1",
+    "uqr": "^0.1.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/dompurify": "^3.0.5",
+    "@types/mailparser": "^3.9.0",
+    "@types/node": "^26.6.4",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.5",
+    "hoodiecrow-imap": "^3.3.1",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3"
+  }
+}

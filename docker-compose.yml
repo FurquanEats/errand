@@ -1,0 +1,16 @@
+services:
+  errand:
+    build: .
+    restart: unless-stopped
+    ports:
+      - '4747:4747' # the app
+      - '6080:6080' # optional: the agent's whole desktop (noVNC); tasks are also watchable in Errand
+    environment:
+      ERRAND_PASSWORD: change-me # required: protects the app
+      VNC_PASSWORD: change-me-too # required: protects the live view
+      ERRAND_ALLOWED_HOSTS: '' # e.g. errand.example.com if you put it behind a domain
+    shm_size: '1gb'
+    volumes:
+      - errand-data:/data
+volumes:
+  errand-data:

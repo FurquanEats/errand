@@ -1,0 +1,38 @@
+name: Something isn't working
+description: Tell us what went wrong, and we'll fix it.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you ask Errand to do, and what did it do instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we see it ourselves?
+      placeholder: |
+        1. Open …
+        2. Ask …
+        3. See …
+  - type: input
+    id: version
+    attributes:
+      label: Errand version
+      description: Settings → About Errand
+      placeholder: 1.0.0
+  - type: dropdown
+    id: system
+    attributes:
+      label: Computer
+      options: [Windows, macOS, Linux, Docker]
+  - type: input
+    id: ai
+    attributes:
+      label: Which AI is connected?
+      placeholder: ChatGPT plan, OpenRouter, Gemini key, Ollama…
+  - type: markdown
+    attributes:
+      value: Please don't paste passwords, API keys, codes or personal email content here.

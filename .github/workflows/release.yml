@@ -1,0 +1,80 @@
+name: Release
+
+# Builds Errand-Setup.exe for each published release and attaches it, with the script installer. Once the SignPath
+# Foundation signing project is set up (the SIGNPATH_ORGANIZATION_ID variable and the
+# SIGNPATH_API_TOKEN secret), the file is code-signed before it is attached; each signing
+# request is approved by hand in SignPath.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and attach Errand-Setup.exe to (e.g. v1.0.0)
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  windows-setup:
+    name: Errand-Setup.exe
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist-win | Out-Null
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/build.ps1 -Out dist-win/Errand-Setup.exe
+          $v = (Get-Item dist-win/Errand-Setup.exe).VersionInfo
+          $expected = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($v.ProductName -ne 'Errand' -or $v.ProductVersion -ne $expected) { throw "Wrong metadata: $($v.ProductName) $($v.ProductVersion)" }
+          if ("v$expected" -ne $env:TAG) { throw "package.json is $expected but the tag is $env:TAG" }
+          "Built Errand-Setup.exe $($v.ProductVersion)"
+
+      - name: Upload for signing
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: Errand-Setup
+          path: dist-win/Errand-Setup.exe
+          if-no-files-found: error
+
+      - name: Sign (SignPath Foundation)
+        if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: errand
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: setup-exe
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          # The approver has a few hours to approve the request in SignPath.
+          wait-for-completion-timeout-in-seconds: 18000
+          output-artifact-directory: dist-win/signed
+
+      - name: Attach to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $file = 'dist-win/Errand-Setup.exe'
+          if (Test-Path dist-win/signed/Errand-Setup.exe) {
+            $file = 'dist-win/signed/Errand-Setup.exe'
+            $sig = Get-AuthenticodeSignature $file
+            if ($sig.Status -ne 'Valid') { throw "Signature is $($sig.Status)" }
+            "Signed by $($sig.SignerCertificate.Subject)"
+          }
+          gh release upload $env:TAG $file --clobber
+          # Older versions of Errand and older guides link the script installer, so it stays attached too.
+          gh release upload $env:TAG scripts/Errand-Setup-Windows.cmd --clobber
