@@ -263,7 +263,8 @@ CreateObject("WScript.Shell").Run "cmd /c """"LAUNCHER"" > ""LOG"" 2>&1""", 0, F
 
   Write-Host "`n  Done. Errand is opening." -ForegroundColor Green
   Info 'Next time, open it from the Errand icon on your Desktop or Start menu.'
-  Info 'It keeps running in the background, with an icon by the clock. To stop it, choose Quit Errand there or in its menu.'
+  if ($built) { Info 'It keeps running in the background, with an icon by the clock. To stop it, choose Quit Errand there or in its menu.' }
+  else { Info 'It keeps running in the background. To stop it, choose Quit Errand in its menu.' }
   if ($built) { Start-Process $exe } elseif ($hidden) { Start-Process $wscript "`"$vbs`"" } else { Start-Process $launcher -WindowStyle Minimized }
 } catch {
   Write-Host "`n  Setup stopped: $($_.Exception.Message)" -ForegroundColor Red

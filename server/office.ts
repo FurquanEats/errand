@@ -39,7 +39,7 @@ export type DocStyle = 'document' | 'resume' | 'letter';
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 /** A clean, printable page: paper-white, ink type, generous but compact for a résumé. */
-function html(title: string, markdown: string, style: DocStyle) {
+function html(title: string, markdown: string, style: DocStyle, scale = 1) {
   const tight = style === 'resume';
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>
 ${appFontFace()}
@@ -47,6 +47,7 @@ ${appFontFace()}
 *{box-sizing:border-box}html{font:${tight ? '10pt/1.38' : '11pt/1.55'} 'Host Grotesk Variable','Segoe UI',Arial,sans-serif;color:#1a1917;-webkit-print-color-adjust:exact}
 body{margin:0;max-width:${tight ? 'none' : '170mm'}}
 @media screen{body{margin:32px auto;padding:0 32px;max-width:${tight ? '210mm' : '190mm'}}}
+${scale < 1 ? `@media print{html{zoom:${scale}}}` : ''}
 h1{font-size:${tight ? '20pt' : '22pt'};letter-spacing:-.02em;margin:0 0 ${tight ? '2pt' : '6pt'};line-height:1.1}
 h1+p{color:#57534b;margin-top:0}
 h2{font-size:${tight ? '10.5pt' : '13pt'};text-transform:${tight ? 'uppercase' : 'none'};letter-spacing:${tight ? '.06em' : '-.01em'};margin:${tight ? '10pt 0 4pt' : '16pt 0 6pt'};padding-bottom:2pt;border-bottom:${tight ? '.6pt solid #c9c2b4' : '0'}}
@@ -58,17 +59,26 @@ code{font-family:Consolas,monospace;font-size:.92em}blockquote{margin:0 0 8pt;pa
 </style></head><body>${marked.parse(markdown, { async: false })}</body></html>`;
 }
 
-async function pdf(page: string): Promise<Buffer> {
+async function pdf(pages: string[]): Promise<{ buffer: Buffer; pages: number; tried: number }> {
   const h = getSettings().handoff;
   const channel = h.browserChannel === 'chromium' || h.browserChannel === 'remote' || h.browserChannel === 'custom' ? undefined : h.browserChannel;
   const launch = (ch?: string) =>
     chromium.launch({ headless: true, channel: ch, executablePath: h.browserChannel === 'custom' && h.executablePath ? h.executablePath : undefined });
   const browser = await launch(channel).catch(() => launch(process.platform === 'win32' ? 'msedge' : 'chrome'));
   try {
+    // Each version is a little tighter than the last; the first that fits one page wins.
+    const { getDocumentProxy } = await import('unpdf');
     const tab = await browser.newPage();
-    await tab.setContent(page, { waitUntil: 'load' });
-    await tab.evaluate(() => document.fonts.ready);
-    return await tab.pdf({ preferCSSPageSize: true, printBackground: true });
+    let best: { buffer: Buffer; pages: number; tried: number } | null = null;
+    for (const [i, page] of pages.entries()) {
+      await tab.setContent(page, { waitUntil: 'load' });
+      await tab.evaluate(() => document.fonts.ready);
+      const buffer = await tab.pdf({ preferCSSPageSize: true, printBackground: true });
+      const count = (await getDocumentProxy(new Uint8Array(buffer))).numPages;
+      best = { buffer, pages: count, tried: i };
+      if (count === 1) break;
+    }
+    return best!;
   } finally {
     await browser.close();
   }
@@ -106,7 +116,7 @@ function runs(tokens: Token[] | undefined, fmt: { bold?: boolean; italics?: bool
   return out;
 }
 
-async function docx(markdown: string, style: DocStyle): Promise<Buffer> {
+async function docx(markdown: string, style: DocStyle, scale = 1): Promise<Buffer> {
   const tight = style === 'resume';
   const body: Paragraph[] = [];
   const list = (l: Tokens.List, depth = 0) => {
@@ -152,22 +162,27 @@ async function docx(markdown: string, style: DocStyle): Promise<Buffer> {
       body.push(new Paragraph({ children: [new TextRun({ text: (t as Tokens.Code).text, italics: t.type === 'blockquote' })] }));
   }
   const font = 'Calibri';
-  const size = tight ? 20 : 22; // half-points
+  const size = Math.round((tight ? 20 : 22) * scale); // half-points
   const doc = new Document({
     styles: {
       default: { document: { run: { font, size, color: '1A1917' } } },
       paragraphStyles: [
-        { id: 'Title', name: 'Title', run: { font, size: tight ? 40 : 44, bold: true }, paragraph: { spacing: { after: tight ? 40 : 120 } } },
+        {
+          id: 'Title',
+          name: 'Title',
+          run: { font, size: Math.round((tight ? 40 : 44) * scale), bold: true },
+          paragraph: { spacing: { after: tight ? 40 : 120 } },
+        },
         {
           id: 'Heading1',
           name: 'Heading 1',
-          run: { font, size: tight ? 21 : 26, bold: true, allCaps: tight },
+          run: { font, size: Math.round((tight ? 21 : 26) * scale), bold: true, allCaps: tight },
           paragraph: { spacing: { before: tight ? 180 : 280, after: tight ? 60 : 100 } },
         },
         {
           id: 'Heading2',
           name: 'Heading 2',
-          run: { font, size: tight ? 21 : 23, bold: true },
+          run: { font, size: Math.round((tight ? 21 : 23) * scale), bold: true },
           paragraph: { spacing: { before: tight ? 100 : 200, after: 20 } },
         },
       ],
@@ -206,12 +221,16 @@ async function docx(markdown: string, style: DocStyle): Promise<Buffer> {
   return Packer.toBuffer(doc);
 }
 
+// A résumé that runs a little long is tightened (down to 85%, still easy to read) to fit one page.
+const FIT = [1, 0.95, 0.9, 0.85];
+
 export async function makeDocument(o: {
   title: string;
   format: 'pdf' | 'docx' | 'html' | 'md' | 'csv';
   content: string;
   style?: DocStyle;
-}): Promise<StoredFile> {
+  scale?: number;
+}): Promise<{ file: StoredFile; pages?: number; scale?: number }> {
   const style = o.style ?? 'document';
   const base =
     o.title
@@ -219,15 +238,18 @@ export async function makeDocument(o: {
       .trim()
       .slice(0, 80) || 'Document';
   switch (o.format) {
-    case 'pdf':
-      return storeFile(`${base}.pdf`, await pdf(html(o.title, o.content, style)));
+    case 'pdf': {
+      const scales = style === 'resume' ? FIT : [1];
+      const out = await pdf(scales.map((k) => html(o.title, o.content, style, k)));
+      return { file: storeFile(`${base}.pdf`, out.buffer), pages: out.pages, scale: scales[out.tried] };
+    }
     case 'docx':
-      return storeFile(`${base}.docx`, await docx(o.content, style));
+      return { file: storeFile(`${base}.docx`, await docx(o.content, style, o.scale ?? 1)) };
     case 'html':
-      return storeFile(`${base}.html`, html(o.title, o.content, style));
+      return { file: storeFile(`${base}.html`, html(o.title, o.content, style)) };
     case 'csv':
-      return storeFile(`${base}.csv`, o.content);
+      return { file: storeFile(`${base}.csv`, o.content) };
     default:
-      return storeFile(`${base}.md`, o.content);
+      return { file: storeFile(`${base}.md`, o.content) };
   }
 }

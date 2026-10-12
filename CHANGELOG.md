@@ -2,6 +2,11 @@
 
 Every change that matters to people using Errand. To update, ask Errand “is there an update?” or use **Settings → About → Update now**; your data stays.
 
+## 1.0.3 · 2026-10-12
+
+- **A short “Needs you”.** When more than six things are waiting, the AI keeps the six that matter most (deadlines, money, travel, real interviews) and quietly drops platform nudges, routine security emails, duplicates and likely scams. To-dos are now only real obligations someone is waiting on.
+- **One-page résumés really fit on one page.** Errand measures the PDF and tightens the type to fit (within easy reading sizes); if it still runs long, the AI shortens it and tries again. The Word file uses the same sizing.
+
 ## 1.0.2 · 2026-10-12
 
 - **Works with Smart App Control.** On Windows 11 PCs where Smart App Control blocks programs it doesn't know yet, setup now notices and starts Errand with its script launcher instead of failing. If Windows blocks the setup download itself, the README has a one-line PowerShell install that always works.

@@ -73,9 +73,25 @@ export const createTools = (ctx: ToolContext) => ({
       style: z.enum(['document', 'resume', 'letter']).default('document'),
     }),
     execute: async ({ title, content, formats, style }) => {
+      // PDF first: the Word file uses the same sizing the PDF needed to fit.
+      const order = [...new Set(formats)].sort((a, b) => (a === 'pdf' ? -1 : b === 'pdf' ? 1 : 0));
       const files = [];
-      for (const format of [...new Set(formats)]) files.push(await makeDocument({ title, format, content, style }));
-      return { files, note: 'Link each file for the user with its url.' };
+      let scale = 1;
+      let pages: number | undefined;
+      for (const format of order) {
+        const made = await makeDocument({ title, format, content, style, scale });
+        if (made.scale) scale = made.scale;
+        if (made.pages) pages = made.pages;
+        files.push(made.file);
+      }
+      return {
+        files,
+        pages,
+        note:
+          style === 'resume' && pages && pages > 1
+            ? `The PDF is ${pages} pages even at the tightest readable size. If the user wants one page, shorten it (fewer, tighter bullets; drop the least relevant items) and make it again.`
+            : 'Link each file for the user with its url.',
+      };
     },
   }),
   file_list: tool({

@@ -150,6 +150,17 @@ function decide(body: any, port: number): Out {
           .map((x) => ({ n: x.n, why: 'other' })),
       }),
     );
+  // Keeping Needs you short: like a real model, drop the low-value suggestion and keep the rest.
+  if (/Needs you" list/.test(sys))
+    return text(
+      JSON.stringify({
+        keep: lastText
+          .split('\n')
+          .map((l, n) => ({ l, n }))
+          .filter((x) => !/test mug/i.test(x.l))
+          .map((x) => x.n),
+      }),
+    );
   // One-time clean-ups of what older versions saved: nothing to drop in a fresh test.
   if (/tracker saved from email|tracker read from payment emails/.test(sys)) return text('{"drop":[]}');
   if (tools.includes('fetch_url')) return text('{"value": 42, "label": "Answer"}');

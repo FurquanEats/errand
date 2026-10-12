@@ -7,7 +7,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { HOST, PASSWORD, PORT, WEB_DIST } from './config.ts';
 import { afterModelSignIn, api } from './routes.ts';
 import { connectAll } from './connectors/mcp.ts';
-import { generateActions } from './actions.ts';
+import { curateActions, generateActions } from './actions.ts';
 import { refreshDuePanels } from './panels.ts';
 import { getSettings } from './settings.ts';
 import { closeBrowser } from './handoff/browser.ts';
@@ -118,6 +118,7 @@ const noticing = () => {
   const p = getSettings().proactive;
   if (!p.enabled || !p.email) return;
   noticeTick();
+  void curateActions();
   if (Date.now() - lastScan > 15 * 60_000) {
     lastScan = Date.now();
     void scanMail().catch((err) => console.warn('[noticed]', err.message));

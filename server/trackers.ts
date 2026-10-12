@@ -7,7 +7,7 @@ import { getKV, getSettings, setKV } from './settings.ts';
 import { notify } from './notify.ts';
 import { mainConversationId, postAssistantMessage } from './chat.ts';
 import { addMemory } from './memory.ts';
-import { closeAction, upsertAction } from './actions.ts';
+import { closeAction, curateActions, upsertAction } from './actions.ts';
 import { listAccounts, withAccountImap, type EmailAccount } from './connectors/email.ts';
 import { DAYS, findHabits, findSubscriptions, hourLabel, localTime, type Category } from './signals.ts';
 
@@ -219,7 +219,7 @@ async function classify(mail: Mail[]): Promise<Map<string, Item>> {
         '- For payment: name is the shop or service paid (never the bank, the card or words like "the below"; "ZOMATO LTD" or "ETERNAL LTD" → "Zomato"; a transfer to a person or between accounts is ignore), amount with currency, category (food, groceries, rides, shopping, subscriptions, travel, bills, other), declined true if it failed. ' +
         'For ci: name is the repository or project ("acme/shop"), title the workflow, ref the branch, link the run’s URL.\n' +
         '- status: job → emailed | applied | received | assessment | interview | offer | rejected | withdrawn; order → ordered | shipped | out_for_delivery | delivered | cancelled | returned | refunded; bill → due | paid | payment_failed | renewing | trial_ending | price_change; travel → booked | check_in | changed | cancelled; security → alert; todo → open.\n' +
-        '- For todo, title is the task starting with a verb ("Approve Priya’s expense report", "Renew your car registration") and date is the deadline.\n' +
+        '- For todo, title is the task starting with a verb ("Approve Priya’s expense report", "Renew your car registration") and date is the deadline. A todo is a real obligation someone is waiting on (approve, sign, pay, renew, RSVP, send a required document); platform and marketing nudges ("complete your profile", "finish your application", webinars, orientations you didn’t sign up for) are ignore.\n' +
         '- name: the company, shop, airline or service ("Raycast", "Amazon", "Airtel", "IndiGo"). title: the role, item or trip ("Product Engineer", "Wireless earbuds", "6E 512 Hyderabad → Goa"). ' +
         'amount: with currency, as written ("₹799"). date: the relevant date or date-time in ISO (due date, renewal, departure, interview, delivery). ref: order id, PNR or tracking number. note: one short sentence on what happened.\n' +
         'Emails marked "sent" were written by the user: a job application they emailed is kind job, status emailed, with the company they wrote to.\n' +
@@ -747,6 +747,7 @@ async function scan() {
     void notify({ title: news[0].replace(/\*\*/g, ''), body: news.length > 1 ? `And ${news.length - 1} more` : undefined, url: `/#/c/${cid}` });
   }
   noticeTick(); // after the summary, so nudges and prep offers follow it in the chat
+  await curateActions();
   return { looked: mail.length, noticed: news.length };
 }
 
