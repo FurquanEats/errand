@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { api, navigate, setDraft, useResource } from '../api';
+import { useApp } from '../context';
+import { Icon } from './Icon';
 import { CardMenu } from './CardMenu';
 import { useToday } from '../today';
 
@@ -22,6 +24,14 @@ interface Tracker {
   today: number;
   items: Item[];
 }
+
+/** One word for what a tracker holds: "Delete the 117 job applications". */
+const NOUN: Record<Tracker['id'], [string, string]> = {
+  jobs: ['job application', 'job applications'],
+  orders: ['order', 'orders'],
+  bills: ['bill', 'bills'],
+  trips: ['booking', 'bookings'],
+};
 
 const GOOD = /^(offer|interview|delivered|paid|refunded|check_in)$/;
 const BAD = /^(rejected|payment_failed|cancelled|changed)$/;
@@ -52,6 +62,22 @@ export function Trackers({ onAct }: { onAct?: () => void }) {
   const { data } = useResource<Tracker[]>('/trackers', ['trackers.updated']);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const today = useToday();
+  const { toast } = useApp();
+  const act = (p: Promise<unknown>, done: string) =>
+    p.then(
+      () => toast(done),
+      (e: Error) => toast(e.message),
+    );
+  const deleteAll = (t: Tracker) => {
+    const [one, many] = NOUN[t.id];
+    if (
+      !confirm(
+        `Delete ${t.title}?\n\nErrand forgets the ${t.total === 1 ? one : `${t.total} ${many}`} it tracked and stops tracking new ${many}. Ask in chat to start again.`,
+      )
+    )
+      return;
+    void act(api(`/trackers/${t.id}`, { method: 'DELETE' }), `${t.title} deleted.`);
+  };
   return (
     <>
       {data
@@ -71,6 +97,7 @@ export function Trackers({ onAct }: { onAct?: () => void }) {
                     { label: 'Ask about these', icon: 'chat', onClick: () => (setDraft(`About my ${t.title.toLowerCase()}: `), navigate('/chat'), onAct?.()) },
                     { label: 'Check my email now', icon: 'refresh', onClick: () => void api('/trackers/scan', { body: {} }) },
                     { label: 'Hide from Today', icon: 'eye', onClick: () => today.hide(t.id, t.title) },
+                    { label: 'Delete', icon: 'trash', danger: true, onClick: () => deleteAll(t) },
                   ]}
                 />
               </header>
@@ -96,6 +123,14 @@ export function Trackers({ onAct }: { onAct?: () => void }) {
                           {[i.label, due(i), t.id === 'bills' && i.amount].filter(Boolean).join(' · ')}
                         </span>
                       </span>
+                    </button>
+                    <button
+                      className="track-x"
+                      aria-label={`Remove ${i.title}`}
+                      title="Remove"
+                      onClick={() => void act(api(`/trackers/items/${i.id}`, { method: 'PATCH', body: { hidden: true } }), `Removed ${i.title}.`)}
+                    >
+                      <Icon name="x" size={13} />
                     </button>
                   </li>
                 ))}

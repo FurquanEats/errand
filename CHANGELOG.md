@@ -5,6 +5,11 @@ Every change that matters to people using Errand. To update, ask Errand “is th
 ## Unreleased
 
 - **Short email notes.** When a check finds many changes at once, similar ones share a line (“4 applications moved to Assessment: Linear, Vercel, Figma and 1 more”), the AI picks the few worth saying first, and the rest wait on your Home screen. To-dos that didn’t make it into Needs you aren’t announced either.
+- **The browser agent follows every new tab.** When a link opened a new tab from a page that was itself opened in a new tab (a job board's "Apply" leading to the employer's portal), the agent stayed on the old page and kept clicking. Downloads and confirm boxes on those tabs are handled too, and a tab that closes itself hands back to the one before it.
+- **Delete things from Today, not just hide them.** Each tracker's menu has **Delete** (it forgets what it tracked and stops tracking that kind until you ask again in chat), each tracked row has a remove button, and panels you built can be deleted.
+- **Fold the Today column away** with the button next to search; the button at the left of the top bar brings it back.
+- **Calmer chat.** A background task's result is a short note (what happened, in a line or two) with the full task, notes and files behind "More", instead of a paragraph-long goal.
+- **Nothing cut off at the top when Errand's window is maximised**, at any display scaling.
 - A finished browser task always shows its final screen, even when it took a moment to save.
 
 ## 1.0.3 · 2026-10-12

@@ -36,7 +36,7 @@ import { phoneCode, phoneStatus, setPhone } from './phone.ts';
 import { geocode, getWeather } from './weather.ts';
 import * as routines from './routines.ts';
 import { runBrief } from './brief.ts';
-import { scanMail, summary as trackerSummary, updateTracked } from './trackers.ts';
+import { deleteTracker, scanMail, summary as trackerSummary, updateTracked, type Tracker } from './trackers.ts';
 import { readStoredFile } from './documents.ts';
 import { exportAllData, deleteAllData } from './data.ts';
 import { canStartAtLogin, isQuitting, quitSoon, setStartsAtLogin, startUpdate, startsAtLogin } from './lifecycle.ts';
@@ -445,6 +445,7 @@ api.post('/accounts/email', async (c) => {
 // ── Things Errand noticed in email: trackers ───────────────────────────────────
 api.get('/trackers', (c) => c.json(trackerSummary()));
 api.post('/trackers/scan', async (c) => c.json(await scanMail()));
+api.delete('/trackers/:tracker', (c) => c.json({ deleted: deleteTracker(c.req.param('tracker') as Tracker) }));
 api.patch('/trackers/items/:id', async (c) => c.json(updateTracked(c.req.param('id'), await c.req.json()) && { ok: true }));
 api.post('/brief', async (c) => c.json({ conversationId: await runBrief('the user asked for a catch-up') }));
 api.post('/accounts/email/:id/test', async (c) => c.json(await email.testAccount(c.req.param('id'))));

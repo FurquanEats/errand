@@ -167,6 +167,22 @@ export function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [needsLogin, setNeedsLogin] = useState<false | { phone: boolean }>(false);
   const [sideOpen, setSideOpen] = useState(false); // today, as a drawer on a phone
+  // Today folded away on a computer, remembered on this device.
+  const [sideHidden, setSideHidden] = useState(() => {
+    try {
+      return localStorage.getItem('errand.sideHidden') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const foldSide = (hide: boolean) => {
+    setSideHidden(hide);
+    try {
+      localStorage.setItem('errand.sideHidden', hide ? '1' : '0');
+    } catch {
+      /* private window: remembered until reload */
+    }
+  };
   const [taskOpen, setTaskOpen] = useState(false); // the browser column
   const [taskLive, setTaskLive] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -298,7 +314,7 @@ export function App() {
         </main>
       ) : (
         <div
-          className={`shell${taskOpen ? ' with-task task-open' : ''}${sideOpen ? ' side-open' : ''}${framed ? ' framed' : ''}`}
+          className={`shell${taskOpen ? ' with-task task-open' : ''}${sideOpen ? ' side-open' : ''}${sideHidden ? ' side-hidden' : ''}${framed ? ' framed' : ''}`}
           style={{ ...(sideW ? { '--side-w': `${sideW}px` } : {}), ...(taskW ? { '--task-w': `${taskW}px` } : {}) } as React.CSSProperties}
         >
           <aside className="side" aria-label="Today">
@@ -317,6 +333,9 @@ export function App() {
               </a>
               <button className="icon-btn" onClick={() => setSearch(true)} aria-label="Search (Ctrl K)" title="Search (Ctrl K)">
                 <Icon name="search" size={17} />
+              </button>
+              <button className="icon-btn side-hide" onClick={() => foldSide(true)} aria-label="Hide the Today column" title="Hide Today">
+                <Icon name="panel-left" size={17} />
               </button>
             </header>
             <div className="side-scroll">
@@ -345,6 +364,9 @@ export function App() {
             <header className="bar">
               <button className="icon-btn drawer-btn" onClick={() => setSideOpen(true)} aria-label="Today">
                 <Icon name="menu" size={19} />
+              </button>
+              <button className="icon-btn side-show" onClick={() => foldSide(false)} aria-label="Show the Today column" title="Show Today">
+                <Icon name="panel-left" size={17} />
               </button>
               <nav className="sections" aria-label="Sections">
                 <a className={chatLike ? 'on' : ''} href="#/chat" aria-current={chatLike ? 'page' : undefined}>

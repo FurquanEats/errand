@@ -1033,8 +1033,44 @@ a.list-item:hover,
   margin: 0;
   padding: 0;
 }
+.track li {
+  position: relative;
+}
 .track li + li {
   border-top: 1px solid var(--rule-soft);
+}
+/* Remove one tracked item: out of sight until you point at the row. */
+.track-x {
+  position: absolute;
+  top: 8px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  color: var(--ink-3);
+  opacity: 0;
+  transition: opacity var(--fast) var(--ease);
+}
+.track li:hover .track-x,
+.track-x:focus-visible {
+  opacity: 1;
+}
+.track-x:hover {
+  background: var(--sunk);
+  color: var(--ink);
+}
+@media (hover: none) {
+  .track-x {
+    opacity: 1;
+    background: none;
+  }
+  .track-row {
+    padding-right: 22px;
+  }
 }
 .track-row {
   display: grid;
@@ -1304,6 +1340,71 @@ a.list-item:hover,
 .event-line svg,
 .ask-done svg {
   flex: none;
+}
+
+/* A background task's result: one line of what it was, two or three of what happened, the rest on tap. */
+.task-update {
+  display: grid;
+  gap: 6px;
+  padding: 2px 0 2px 14px;
+  border-left: 2px solid var(--rule);
+}
+.task-update.failed {
+  border-left-color: var(--bad-soft);
+}
+.tu-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.tu-head svg {
+  flex: none;
+}
+.tu-status {
+  flex: none;
+  color: var(--ink);
+  font-weight: 600;
+}
+.tu-goal {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tu-more {
+  flex: none;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.tu-head:hover .tu-more {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.tu-result,
+.tu-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.58;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.tu-result {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
 }
 
 /* Markdown */
@@ -3021,4 +3122,34 @@ body.resizing iframe {
 .tool-head {
   display: flex;
   width: 100%;
+}
+
+/* Today folded away on a computer: the conversation takes its room, and a button in the bar brings it back. */
+.side-show {
+  display: none;
+}
+@media (min-width: 761px) {
+  .shell.side-hidden {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .shell.side-hidden.with-task {
+    grid-template-columns: minmax(0, 1fr) var(--task-w);
+  }
+  .shell.side-hidden .side {
+    display: none;
+  }
+  .shell.side-hidden .side-show {
+    display: inline-grid;
+    margin: 0 4px 0 -6px;
+  }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .shell.side-hidden.with-task {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 760px) {
+  .side-hide {
+    display: none;
+  }
 }

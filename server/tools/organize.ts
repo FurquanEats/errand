@@ -7,7 +7,7 @@ import { getSettings, saveSettings } from '../settings.ts';
 import { publish } from '../bus.ts';
 import { createPanel, deletePanel, editPanel, listPanels, refreshPanel, updatePanel } from '../panels.ts';
 import { createRoutine, deleteRoutine, describeSchedule, listRoutines, updateRoutine } from '../routines.ts';
-import { scanMail, spending, statusNames, subscriptions, summary, TRACKERS, updateTracked } from '../trackers.ts';
+import { deleteTracker, resumeTracker, scanMail, spending, statusNames, subscriptions, summary, TRACKERS, updateTracked, type Tracker } from '../trackers.ts';
 import { listAccounts } from '../connectors/email.ts';
 import type { ToolContext } from './index.ts';
 
@@ -187,28 +187,32 @@ export const organizeTools = (_ctx: ToolContext) => ({
         sections: [
           { id: 'needs', title: 'Needs you', items: listActions().length, hidden: hidden.includes('needs') },
           { id: 'weather', title: 'Weather', hidden: hidden.includes('weather') },
-          ...summary().map((t) => ({ id: t.id, title: t.title, items: t.total, hidden: hidden.includes(t.id) })),
+          ...summary().map((t) => ({ id: t.id, title: t.title, items: t.total, hidden: hidden.includes(t.id), deleted: t.off })),
         ],
         panels: listPanels().map((p) => ({ id: p.id.slice(0, 8), title: p.title })),
-        how: 'today_update hides or shows sections and clears Needs you; panel_update removes or changes a panel the user built; tracker_update removes single tracked items.',
+        how: 'today_update hides, shows or deletes sections and clears Needs you; panel_update removes or changes a panel the user built; tracker_update removes single tracked items.',
       };
     },
   }),
   today_update: tool({
     description:
-      'Change the Today column: hide or show sections (needs, weather, jobs, orders, bills, trips), or clear everything in Needs you. "Delete all my panels" means hide the sections and remove the user-built panels (panel_update with remove).',
+      'Change the Today column: hide or show sections (needs, weather, jobs, orders, bills, trips), clear everything in Needs you, or delete trackers (jobs, orders, bills, trips): that forgets everything they tracked and stops tracking that kind; showing one again starts tracking again. ' +
+      '"Delete all my panels" means hide needs and weather, delete the trackers and remove the user-built panels (panel_update with remove). Deleting can’t be undone: say what will go first unless the user was explicit.',
     inputSchema: z.object({
       hide: z.array(z.enum(['needs', 'weather', 'jobs', 'orders', 'bills', 'trips'])).optional(),
       show: z.array(z.enum(['needs', 'weather', 'jobs', 'orders', 'bills', 'trips'])).optional(),
       clear_needs: z.boolean().optional(),
+      delete: z.array(z.enum(['jobs', 'orders', 'bills', 'trips'])).optional(),
     }),
-    execute: async ({ hide = [], show = [], clear_needs }) => {
+    execute: async ({ hide = [], show = [], clear_needs, delete: drop = [] }) => {
       const hidden = new Set(getSettings().today.hidden);
       hide.forEach((h) => hidden.add(h));
       show.forEach((h) => hidden.delete(h));
+      show.forEach((h) => h in TRACKERS && resumeTracker(h as Tracker));
+      const deleted = Object.fromEntries(drop.map((t) => [t, deleteTracker(t)]));
       saveSettings({ today: { hidden: [...hidden] } });
       publish({ type: 'settings.updated' });
-      return { hidden: [...hidden], cleared: clear_needs ? clearActions() : 0 };
+      return { hidden: [...hidden], cleared: clear_needs ? clearActions() : 0, deleted };
     },
   }),
   panel_update: tool({

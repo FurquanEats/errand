@@ -81,10 +81,10 @@ export function Panels({ column }: { column?: boolean } = {}) {
                   onClick: () => void api(`/panels/${p.id}`, { method: 'PATCH', body: { size: p.size === 'sm' ? 'md' : p.size === 'md' ? 'lg' : 'sm' } }),
                 },
                 {
-                  label: 'Remove',
+                  label: 'Delete',
                   icon: 'trash',
                   danger: true,
-                  onClick: () => confirm(`Remove “${p.title}”?`) && void api(`/panels/${p.id}`, { method: 'DELETE' }),
+                  onClick: () => confirm(`Delete the “${p.title}” panel?`) && void api(`/panels/${p.id}`, { method: 'DELETE' }),
                 },
               ]}
             />

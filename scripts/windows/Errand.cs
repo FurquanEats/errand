@@ -547,8 +547,14 @@ namespace Errand
         struct RECT { public int Left, Top, Right, Bottom; }
         [StructLayout(LayoutKind.Sequential)]
         struct NCCALCSIZE_PARAMS { public RECT Rgrc0, Rgrc1, Rgrc2; public IntPtr Pos; }
+        [StructLayout(LayoutKind.Sequential)]
+        struct MONITORINFO { public int Size; public RECT Monitor, Work; public uint Flags; }
         [DllImport("user32.dll")]
-        static extern int GetSystemMetrics(int index);
+        static extern bool IsZoomed(IntPtr hwnd);
+        [DllImport("user32.dll")]
+        static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+        [DllImport("user32.dll")]
+        static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
 
         public static bool Available
         {
@@ -719,8 +725,11 @@ namespace Errand
                 var top = ((NCCALCSIZE_PARAMS)Marshal.PtrToStructure(m.LParam, typeof(NCCALCSIZE_PARAMS))).Rgrc0.Top;
                 base.WndProc(ref m);
                 var p = (NCCALCSIZE_PARAMS)Marshal.PtrToStructure(m.LParam, typeof(NCCALCSIZE_PARAMS));
-                // A maximised window hangs over the screen edge by its frame; keep the page on screen.
-                p.Rgrc0.Top = top + (WindowState == FormWindowState.Maximized ? GetSystemMetrics(33) + GetSystemMetrics(92) : 0);
+                p.Rgrc0.Top = top;
+                // A maximised window hangs over the screen edges by its frame, which differs with each
+                // screen's scaling: the page gets exactly the screen's work area instead, so nothing is cut off.
+                var info = new MONITORINFO { Size = Marshal.SizeOf(typeof(MONITORINFO)) };
+                if (IsZoomed(Handle) && GetMonitorInfo(MonitorFromWindow(Handle, 2), ref info)) p.Rgrc0 = info.Work;
                 Marshal.StructureToPtr(p, m.LParam, false);
                 m.Result = IntPtr.Zero;
                 return;

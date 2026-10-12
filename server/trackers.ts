@@ -264,7 +264,7 @@ function track(
   key: string,
   f: { title: string; subtitle?: string; status: string; detail?: string; due?: string; amount?: string; category?: string; messageId: string; at: number },
 ): 'new' | 'changed' | null {
-  if (!STATUS[f.status]) return null;
+  if (!STATUS[f.status] || isOff(tracker)) return null;
   const row = get<TrackedRow>('SELECT * FROM tracked WHERE tracker = ? AND key = ?', tracker, key);
   const entry = { status: f.status, at: f.at, note: clean(f.detail ?? '', 160) };
   if (!row) {
@@ -850,6 +850,7 @@ export function summary() {
     return {
       id: tracker,
       title: TRACKERS[tracker],
+      off: isOff(tracker),
       total: items.length,
       today: items.filter((r) => localTime(r.changed_at, tz).date === today).length,
       items: items.map((r) => ({
@@ -865,6 +866,29 @@ export function summary() {
       })),
     };
   });
+}
+
+/** A tracker the user deleted keeps nothing new until they ask for it again. */
+const isOff = (tracker: Tracker) => getKV(`tracker.off.${tracker}`) === '1';
+
+// The Needs-you buttons each tracker's items make ("trips:<id>", "stay:<id>", "followup:<id>").
+const BUTTONS: Record<Tracker, string[]> = { jobs: ['jobs:', 'followup:'], orders: ['orders:'], bills: ['bills:'], trips: ['trips:', 'stay:'] };
+
+/** Delete a whole tracker: forget everything it kept, drop its buttons, and stop tracking that kind. */
+export function deleteTracker(tracker: Tracker) {
+  if (!TRACKERS[tracker]) throw new Error(`Tracker must be one of: ${Object.keys(TRACKERS).join(', ')}`);
+  const n = Number(run('DELETE FROM tracked WHERE tracker = ?', tracker).changes);
+  for (const prefix of BUTTONS[tracker]) run("UPDATE actions SET status = 'dismissed' WHERE status = 'open' AND key LIKE ?", `${prefix}%`);
+  setKV(`tracker.off.${tracker}`, '1');
+  publish({ type: 'trackers.updated' });
+  publish({ type: 'actions.updated' });
+  return n;
+}
+
+/** Start keeping a deleted tracker again, from the next emails on. */
+export function resumeTracker(tracker: Tracker) {
+  setKV(`tracker.off.${tracker}`, '0');
+  publish({ type: 'trackers.updated' });
 }
 
 export function updateTracked(itemId: string, changes: { hidden?: boolean; status?: string }) {

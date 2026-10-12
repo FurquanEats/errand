@@ -46,7 +46,7 @@ function WeatherSection({ w, onHide }: { w: Weather; onHide: () => void }) {
           label="Weather"
           items={[
             { label: 'Change city', icon: 'settings', onClick: () => navigate('/settings/profile') },
-            { label: 'Hide from Today', icon: 'eye', onClick: onHide },
+            { label: 'Remove from Today', icon: 'trash', danger: true, onClick: onHide },
           ]}
         />
       </header>

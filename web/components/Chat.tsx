@@ -49,6 +49,7 @@ type Item = { kind: 'text'; text: string } | { kind: 'tool'; id: string; name: s
 type Turn =
   | { role: 'user'; content: any[]; id: string }
   | { role: 'event'; text: string; icon: string; id: string; done?: boolean }
+  | { role: 'update'; status: string; goal: string; result: string; more: string; id: string }
   | { role: 'assistant'; items: Item[]; id: string; at?: number };
 
 const textOf = (content: any) => (Array.isArray(content) ? content.map((p: any) => p.text ?? '').join(' ') : String(content));
@@ -63,6 +64,10 @@ function toTurns(messages: Msg[]): Turn[] {
   for (const m of messages) {
     if (m.kind === 'event') {
       turns.push({ role: 'event', icon: (Array.isArray(m.content) && m.content[0]?.icon) || 'check', text: textOf(m.content), id: m.id, done: true });
+    } else if (m.role === 'user' && m.kind === 'update' && TASK_UPDATE.test(textOf(m.content))) {
+      const [, status, goal, rest] = textOf(m.content).match(TASK_UPDATE)!;
+      const [result, ...more] = rest.split('\n');
+      turns.push({ role: 'update', status, goal, result: result.replace(/^Result:\s*/, ''), more: more.join('\n'), id: m.id });
     } else if (m.role === 'user' && m.kind === 'update') {
       turns.push({
         role: 'event',
@@ -101,6 +106,35 @@ function toTurns(messages: Msg[]): Turn[] {
     }
   }
   return turns;
+}
+
+// "Background task failed: “<goal>”\nResult: …\nNotes: …\nFiles: …", as the server posts it.
+const TASK_UPDATE = /^(?:\[Task update\]\s*)?Background task (\w+): “([\s\S]*?)”\n([\s\S]*)$/;
+const UPDATE_LABEL: Record<string, string> = { done: 'Browser task finished', failed: 'Browser task couldn’t finish', cancelled: 'Browser task stopped' };
+
+/**
+ * A background task's result, kept short: what happened in a line or two, with the full goal,
+ * notes and files a tap away. (Goals are written for the agent and can run a whole paragraph.)
+ */
+function TaskUpdate({ t }: { t: Extract<Turn, { role: 'update' }> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`task-update ${t.status}`}>
+      <button className="tu-head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <Icon name="globe" size={14} />
+        <span className="tu-status">{UPDATE_LABEL[t.status] ?? `Browser task ${t.status}`}</span>
+        <span className="tu-goal">{t.goal}</span>
+        <span className="tu-more">{open ? 'Less' : 'More'}</span>
+      </button>
+      {open ? (
+        <div className="tu-body md">
+          <Markdown text={[t.result, t.more.replace(/^(Notes|Files):/gm, '**$1:**'), `**Task:** ${t.goal}`].filter(Boolean).join('\n\n')} />
+        </div>
+      ) : (
+        <p className="tu-result">{t.result}</p>
+      )}
+    </div>
+  );
 }
 
 /** "Errand · 9:12 am" above a reply, when time has passed since the last one shown. */
@@ -304,6 +338,8 @@ export function Chat({ id, main }: { id: string; main?: boolean }) {
           {turns.map((t) =>
             t.role === 'user' ? (
               <UserBubble key={t.id} content={t.content} />
+            ) : t.role === 'update' ? (
+              <TaskUpdate key={t.id} t={t} />
             ) : t.role === 'event' ? (
               t.done ? (
                 <div key={t.id} className="ask-done">
