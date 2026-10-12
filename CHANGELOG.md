@@ -2,6 +2,10 @@
 
 Every change that matters to people using Errand. To update, ask Errand “is there an update?” or use **Settings → About → Update now**; your data stays.
 
+## 1.0.2 · 2026-10-12
+
+- **Works with Smart App Control.** On Windows 11 PCs where Smart App Control blocks programs it doesn't know yet, setup now notices and starts Errand with its script launcher instead of failing. If Windows blocks the setup download itself, the README has a one-line PowerShell install that always works.
+
 ## 1.0.1 · 2026-10-12
 
 - **Documents in and out.** Attach a PDF or Word file and Errand reads it, whichever AI you use. Ask for a résumé, cover letter, report, itinerary or invoice and it makes a real **PDF and Word** file, and can upload it to a website for you.

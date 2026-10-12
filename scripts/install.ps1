@@ -192,6 +192,19 @@ echo.
     Remove-Item "$exe.new" -Force -ErrorAction SilentlyContinue
   }
 
+  # Smart App Control (Windows 11) can block a program built on this computer until it's signed.
+  # If Windows won't start Errand.exe, use the script launcher instead (wscript and node are signed).
+  if ($built) {
+    try {
+      $probe = Start-Process $exe -ArgumentList '--probe' -PassThru -WindowStyle Hidden -ErrorAction Stop
+      if (-not $probe.WaitForExit(15000)) { Stop-Process $probe -Force -ErrorAction SilentlyContinue }
+    } catch {
+      Info 'Windows blocked Errand.exe (Smart App Control), so Errand will use its script launcher.'
+      Remove-Item $exe -Force -ErrorAction SilentlyContinue
+      $built = $false
+    }
+  }
+
   $icon = Join-Path $Root 'Errand.ico'
   Copy-Item (Join-Path $AppDir 'web\public\icon.ico') $icon -Force
   $log = Join-Path $Root 'errand.log'

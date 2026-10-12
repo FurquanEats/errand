@@ -37,6 +37,8 @@ namespace Errand
             Application.SetCompatibleTextRenderingDefault(false);
             var flags = new HashSet<string>(args, StringComparer.OrdinalIgnoreCase);
             var install = new Install(Path.GetDirectoryName(Application.ExecutablePath));
+            // The installer runs this to check Windows lets it start (Smart App Control can block it).
+            if (flags.Contains("--probe")) return 0;
             try
             {
                 if (flags.Contains("--uninstall")) return Uninstaller.Run(install, flags.Contains("--quiet"));

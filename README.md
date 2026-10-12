@@ -68,6 +68,12 @@ Errand does what Hark sells: one chat, a browser agent that works real websites,
 2. If Windows says it protected your PC, choose **More info → Run anyway** (see [code signing](#code-signing-policy)).
 3. Wait a minute or two. Errand opens by itself.
 
+If Windows blocks it outright (Smart App Control, on some Windows 11 PCs, until our signing is approved), install from PowerShell instead: press <kbd>Start</kbd>, type _PowerShell_, open it, paste this line and press <kbd>Enter</kbd>:
+
+```powershell
+irm https://raw.githubusercontent.com/FurquanEats/errand/main/scripts/install.ps1 | iex
+```
+
 **Mac and Linux**
 
 Open **Terminal** (on a Mac: <kbd>⌘</kbd> <kbd>Space</kbd>, type _Terminal_, <kbd>Return</kbd>), paste this line and press <kbd>Return</kbd>:
