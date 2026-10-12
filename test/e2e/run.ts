@@ -145,7 +145,8 @@ try {
     text: 'make this a one-page resume',
     attachments: [{ name: 'old-cv.docx', mediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data: cv.toString('base64') }],
   });
-  for (let i = 0; i < 60 && (await api(`/conversations/${main}`)).data.activeRun; i++) await sleep(250);
+  // Making a PDF starts a browser, which takes a while on a cold CI machine.
+  for (let i = 0; i < 240 && (await api(`/conversations/${main}`)).data.activeRun; i++) await sleep(500);
   msgs = (await api(`/conversations/${main}`)).data.messages;
   check('an attached Word file is read for the AI', /Frontend engineer with five years of React/.test(allText(msgs)));
   const made = toolOutput(msgs, 'create_document');
