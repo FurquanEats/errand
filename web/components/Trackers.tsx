@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, navigate, setDraft, useResource } from '../api';
 import { CardMenu } from './CardMenu';
+import { useToday } from '../today';
 
 interface Item {
   id: string;
@@ -50,10 +51,11 @@ const when = (ts: number) => {
 export function Trackers({ onAct }: { onAct?: () => void }) {
   const { data } = useResource<Tracker[]>('/trackers', ['trackers.updated']);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const today = useToday();
   return (
     <>
       {data
-        ?.filter((t) => t.total)
+        ?.filter((t) => t.total && !today.isHidden(t.id))
         .map((t) => {
           const shown = open[t.id] ? t.items : t.items.slice(0, 4);
           return (
@@ -68,6 +70,7 @@ export function Trackers({ onAct }: { onAct?: () => void }) {
                   items={[
                     { label: 'Ask about these', icon: 'chat', onClick: () => (setDraft(`About my ${t.title.toLowerCase()}: `), navigate('/chat'), onAct?.()) },
                     { label: 'Check my email now', icon: 'refresh', onClick: () => void api('/trackers/scan', { body: {} }) },
+                    { label: 'Hide from Today', icon: 'eye', onClick: () => today.hide(t.id, t.title) },
                   ]}
                 />
               </header>

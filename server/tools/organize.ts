@@ -2,10 +2,12 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { all } from '../db.ts';
 import { addTask, createProject, findProject, listProjects, updateProject, updateTask } from '../projects.ts';
-import { createAction, listActions, setActionStatus } from '../actions.ts';
+import { clearActions, createAction, listActions, setActionStatus } from '../actions.ts';
+import { getSettings, saveSettings } from '../settings.ts';
+import { publish } from '../bus.ts';
 import { createPanel, deletePanel, editPanel, listPanels, refreshPanel, updatePanel } from '../panels.ts';
 import { createRoutine, deleteRoutine, describeSchedule, listRoutines, updateRoutine } from '../routines.ts';
-import { scanMail, spending, statusNames, summary, TRACKERS, updateTracked } from '../trackers.ts';
+import { scanMail, spending, statusNames, subscriptions, summary, TRACKERS, updateTracked } from '../trackers.ts';
 import { listAccounts } from '../connectors/email.ts';
 import type { ToolContext } from './index.ts';
 
@@ -162,11 +164,52 @@ export const organizeTools = (_ctx: ToolContext) => ({
     inputSchema: z.object({ days: z.number().int().min(1).max(365).default(30), merchant: z.string().optional() }),
     execute: async ({ days, merchant }) => spending(days, merchant),
   }),
+  subscriptions: tool({
+    description:
+      'Subscriptions and other recurring charges, found in card, UPI and receipt emails (what, how much, how often, next charge), plus renewals, price changes and trials ending from email. ' +
+      'For "what am I subscribed to?", "which could I cancel?", "how much do I spend on subscriptions?". To cancel one, use handoff on its website and ask before confirming.',
+    inputSchema: z.object({}),
+    execute: async () => subscriptions(),
+  }),
   panel_list: tool({
     description: 'List the home-screen panels with their latest data, to answer questions about them.',
     inputSchema: z.object({}),
     execute: async () =>
       listPanels().map((p) => ({ id: p.id.slice(0, 8), title: p.title, size: p.size, data: p.data?.slice(0, 2000) ?? null, error: p.error })),
+  }),
+  today_list: tool({
+    description:
+      'Everything on the Today column (what users may call their "panels", "home" or "cards"): Needs you (action buttons), the weather, the trackers built from email (job applications, orders, bills, trips) and the panels the user built, with which are hidden. Call this before changing or removing anything there.',
+    inputSchema: z.object({}),
+    execute: async () => {
+      const hidden = getSettings().today.hidden;
+      return {
+        sections: [
+          { id: 'needs', title: 'Needs you', items: listActions().length, hidden: hidden.includes('needs') },
+          { id: 'weather', title: 'Weather', hidden: hidden.includes('weather') },
+          ...summary().map((t) => ({ id: t.id, title: t.title, items: t.total, hidden: hidden.includes(t.id) })),
+        ],
+        panels: listPanels().map((p) => ({ id: p.id.slice(0, 8), title: p.title })),
+        how: 'today_update hides or shows sections and clears Needs you; panel_update removes or changes a panel the user built; tracker_update removes single tracked items.',
+      };
+    },
+  }),
+  today_update: tool({
+    description:
+      'Change the Today column: hide or show sections (needs, weather, jobs, orders, bills, trips), or clear everything in Needs you. "Delete all my panels" means hide the sections and remove the user-built panels (panel_update with remove).',
+    inputSchema: z.object({
+      hide: z.array(z.enum(['needs', 'weather', 'jobs', 'orders', 'bills', 'trips'])).optional(),
+      show: z.array(z.enum(['needs', 'weather', 'jobs', 'orders', 'bills', 'trips'])).optional(),
+      clear_needs: z.boolean().optional(),
+    }),
+    execute: async ({ hide = [], show = [], clear_needs }) => {
+      const hidden = new Set(getSettings().today.hidden);
+      hide.forEach((h) => hidden.add(h));
+      show.forEach((h) => hidden.delete(h));
+      saveSettings({ today: { hidden: [...hidden] } });
+      publish({ type: 'settings.updated' });
+      return { hidden: [...hidden], cleared: clear_needs ? clearActions() : 0 };
+    },
   }),
   panel_update: tool({
     description: 'Change a panel (redesign it or what it shows), resize it, refresh its data now, or remove it. id from panel_list.',

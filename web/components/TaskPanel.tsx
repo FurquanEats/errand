@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { navigate, setDraft, timeAgo, useEvents, useResource } from '../api';
+import { api, navigate, setDraft, timeAgo, useEvents, useResource } from '../api';
+import { useApp } from '../context';
 import { HandoffView } from './HandoffView';
 import { Icon } from './Icon';
 
@@ -20,11 +21,54 @@ const LABEL: Record<string, [string, string]> = {
   cancelled: ['Cancelled', ''],
 };
 
+/** Open a site in Errand's browser with you in control, to sign in once for every future task. */
+function SignIn() {
+  const { toast } = useApp();
+  const [site, setSite] = useState('');
+  return (
+    <form
+      className="steer"
+      style={{ marginBottom: 18 }}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        try {
+          const { id } = await api<{ id: string }>('/handoffs/sign-in', { body: { url: site } });
+          setSite('');
+          window.dispatchEvent(new CustomEvent('errand:show-task', { detail: id }));
+        } catch (err) {
+          toast((err as Error).message);
+        }
+      }}
+    >
+      <input
+        className="input"
+        value={site}
+        onChange={(e) => setSite(e.target.value)}
+        placeholder="Sign in to a site: zepto.com, linkedin.com…"
+        aria-label="Website to sign in to"
+      />
+      <button className="btn" disabled={!site.trim()}>
+        Open
+      </button>
+    </form>
+  );
+}
+
 /**
  * The browser column: the task Errand is working on, live. A new task takes the stage; with
  * several running, tabs switch between them. With none, recent tasks and an example.
  */
-export function TaskPanel({ open, onLive, onClose }: { open: boolean; onLive: (live: boolean) => void; onClose: () => void }) {
+export function TaskPanel({
+  open,
+  onLive,
+  onClose,
+  resizer,
+}: {
+  open: boolean;
+  onLive: (live: boolean) => void;
+  onClose: () => void;
+  resizer?: React.ReactNode;
+}) {
   const { data: tasks } = useResource<Task[]>('/handoffs', ['handoff.created', 'handoff.status']);
   const [picked, setPicked] = useState<string | null>(null);
   useEffect(() => {
@@ -43,6 +87,7 @@ export function TaskPanel({ open, onLive, onClose }: { open: boolean; onLive: (l
 
   return (
     <aside className="task-col" aria-label="Browser">
+      {resizer}
       <header className="bar">
         <h2>{current && picked !== 'none' ? current.goal : 'Browser'}</h2>
         {current && picked !== 'none' && (
@@ -70,6 +115,10 @@ export function TaskPanel({ open, onLive, onClose }: { open: boolean; onLive: (l
           <div className="task-empty">
             <h3>{tasks?.length ? 'Browser tasks' : 'Nothing running'}</h3>
             <p>When Errand works on a website you watch it here, live. Take over any time to sign in or pick something yourself, then hand it back.</p>
+            <SignIn />
+            <p className="hint" style={{ margin: '-10px 0 20px' }}>
+              Sign in once to Google, your grocery app or a job site, and every task can use it. Errand’s browser remembers.
+            </p>
             {!!tasks?.length && (
               <ul className="recent">
                 {tasks.slice(0, 8).map((t) => (

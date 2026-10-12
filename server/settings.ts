@@ -36,6 +36,8 @@ export interface Settings {
   notifications: { ntfyUrl: string };
   /** Ask GitHub every few hours whether a newer Errand is out. */
   updates: { check: boolean };
+  // Sections taken off the Today column: needs, weather, jobs, orders, bills, trips.
+  today: { hidden: string[] };
   /** Off by default. When on, the assistant may run shell commands, each approved by the user. */
   computer: { allowCommands: boolean };
   customInstructions: string;
@@ -73,6 +75,7 @@ export const defaultSettings: Settings = {
   voice: { speakReplies: false },
   notifications: { ntfyUrl: '' },
   updates: { check: true },
+  today: { hidden: [] },
   computer: { allowCommands: false },
   customInstructions: '',
 };

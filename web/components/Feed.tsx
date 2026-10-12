@@ -5,6 +5,7 @@ import { Panels } from './Panels';
 import { Trackers } from './Trackers';
 import { Icon } from './Icon';
 import { CardMenu } from './CardMenu';
+import { useToday } from '../today';
 
 interface Action {
   id: string;
@@ -35,13 +36,19 @@ function VerbTitle({ title }: { title: string }) {
   );
 }
 
-function WeatherSection({ w }: { w: Weather }) {
+function WeatherSection({ w, onHide }: { w: Weather; onHide: () => void }) {
   const sunset = w.sunset ? new Date(w.sunset).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
   return (
     <section className="sec" aria-label="Weather">
       <header className="sec-head">
         <h2>{w.location.split(',')[0]}</h2>
-        <CardMenu label="Weather" items={[{ label: 'Change city', icon: 'settings', onClick: () => navigate('/settings/profile') }]} />
+        <CardMenu
+          label="Weather"
+          items={[
+            { label: 'Change city', icon: 'settings', onClick: () => navigate('/settings/profile') },
+            { label: 'Hide from Today', icon: 'eye', onClick: onHide },
+          ]}
+        />
       </header>
       <div className="wx">
         <div className="wx-now" aria-label={`${w.temperature} degrees ${w.unit}`}>
@@ -64,6 +71,7 @@ function WeatherSection({ w }: { w: Weather }) {
  */
 export function Feed({ onAct }: { onAct?: () => void }) {
   const { settings, toast } = useApp();
+  const today = useToday();
   const { data: actions } = useResource<Action[]>('/actions', ['actions.updated']);
   const { data: weather } = useResource<Weather | null>('/weather', ['settings.updated']);
   const [generating, setGenerating] = useState(false);
@@ -86,13 +94,17 @@ export function Feed({ onAct }: { onAct?: () => void }) {
 
   return (
     <>
-      {(!!actions?.length || generating) && (
+      {(!!actions?.length || generating) && !today.isHidden('needs') && (
         <section className="sec" aria-label="Needs you">
           <header className="sec-head">
             <h2>Needs you {!!actions?.length && <span className="n">{actions.length}</span>}</h2>
             <CardMenu
               label="Needs you"
-              items={[{ label: 'Look for new things', icon: 'refresh', onClick: () => void api('/actions/refresh', { body: {} }) }]}
+              items={[
+                { label: 'Look for new things', icon: 'refresh', onClick: () => void api('/actions/refresh', { body: {} }) },
+                { label: 'Clear all', icon: 'check', onClick: () => void api('/actions/clear', { body: {} }) },
+                { label: 'Hide from Today', icon: 'eye', onClick: () => today.hide('needs', 'Needs you') },
+              ]}
             />
           </header>
           <ul className="needs">
@@ -141,8 +153,8 @@ export function Feed({ onAct }: { onAct?: () => void }) {
           )}
         </section>
       )}
-      {weather ? (
-        <WeatherSection w={weather} />
+      {today.isHidden('weather') ? null : weather ? (
+        <WeatherSection w={weather} onHide={() => today.hide('weather', 'Weather')} />
       ) : (
         !settings?.location && (
           <a className="sec-hint" href="#/settings/profile">
@@ -152,6 +164,11 @@ export function Feed({ onAct }: { onAct?: () => void }) {
       )}
       <Trackers onAct={onAct} />
       <Panels column />
+      {today.hidden.length > 0 && (
+        <button className="sec-more" style={{ marginTop: 14 }} onClick={today.showAll}>
+          Show hidden ({today.hidden.length})
+        </button>
+      )}
     </>
   );
 }

@@ -26,6 +26,7 @@ export interface AppSettings {
   voice: { speakReplies: boolean };
   notifications: { ntfyUrl: string };
   computer: { allowCommands: boolean };
+  today?: { hidden: string[] };
   customInstructions: string;
   microsoft?: { clientId: string; ready: boolean; redirectUri: string };
 }

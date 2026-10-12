@@ -61,6 +61,13 @@ export function upsertAction(key: string, input: { title: string; description?: 
   return aid;
 }
 
+/** Clear everything in Needs you (it comes back only when something new turns up). */
+export function clearActions() {
+  const n = run("UPDATE actions SET status = 'dismissed' WHERE status = 'open'").changes;
+  publish({ type: 'actions.updated' });
+  return Number(n);
+}
+
 export function closeAction(key: string) {
   if (run("UPDATE actions SET status = 'done' WHERE key = ? AND status = 'open'", key).changes) publish({ type: 'actions.updated' });
 }

@@ -12,7 +12,7 @@ import { memoryContext } from '../memory.ts';
 import { createLogin, fillTokens, isUnlocked, redact, tokenCatalog, type VaultItemInfo } from '../vault.ts';
 import { emailEnabled, findVerification } from '../connectors/email.ts';
 import { UNTRUSTED_CONTENT_RULE, isOwnOrigin } from '../security.ts';
-import { askForCode, askUnlock, askUser, isPending, requestApproval, resolvePending } from '../approvals.ts';
+import { askForCode, askUnlock, askUser, isPending, listPending, requestApproval, resolvePending } from '../approvals.ts';
 import { notify } from '../notify.ts';
 import { listStoredFiles, readStoredFile, storeFile, type StoredFile } from '../documents.ts';
 import { acquireSlot, getContext } from './browser.ts';
@@ -127,9 +127,16 @@ How you work:
 - Each turn you get the current URL, the page text, and a numbered list of interactive elements${s.handoff.useVision ? ' plus a screenshot with matching numbered boxes' : ''}. Call exactly one tool per turn.
 - Prefer direct URLs when you know them (e.g. a site's search URL). Dismiss cookie banners with the most privacy-preserving option.
 - Use what you know about the user (below) to fill forms: name, address, preferences. For logins and payment use vault tokens; the real values are inserted for you and you will never see them.
-- If a site needs a login the vault does not have: if the task implies signing up (e.g. applying for a job on a new portal), use create_login; otherwise ask_user.
+- Signing in comes first. Before account work (applying, ordering, booking, anything personal), check whether you are signed in (the user's name or avatar, no "Sign in" button). If not, in this order:
+  1. a vault login for this site;
+  2. "Continue with Google" (or Apple or Microsoft) when the user's Google account is signed in in this browser;
+  3. a phone or email one-time code: type the user's phone or email from what you know, then get_verification for the code (it checks their email and otherwise asks them, e.g. for an SMS code);
+  4. if the task implies a new account (a job portal they have never used), create_login;
+  5. otherwise ask_user: "Please take over and sign in to <site>, then hand it back. This browser remembers it." The user signs in on the live screen and hands back; then carry on.
+  Never carry on signed out when the task needs the user's account.
 - When a site sends a verification code or link, use get_verification. Never ask for codes any other way.
-- If a site shows a CAPTCHA, use ask_user so the user can solve it (they can take over the browser).
+- If a site shows a CAPTCHA or a check you can't pass, ask_user for the user to take over and solve it.
+- Orders and bookings: use the user's saved address and preferences; before the final "Place order", "Pay" or "Book", call request_approval with the items and quantities, the total with fees, the delivery address, the delivery or travel time and the payment method shown on the page.
 - Never guess at prices or confirmation details: read them from the page and save them with note.
 - ALWAYS call request_approval before paying, ordering, booking, sending, or submitting anything irreversible. If approval is denied, do not proceed with that step.
 - Be efficient. When the task is complete, or impossible, call done with a clear summary.
@@ -181,6 +188,8 @@ export function controlHandoff(hid: string, on: boolean) {
     r.steer.push(
       'The user took over the browser and has now handed it back. The page may have changed (they may have signed in, solved a CAPTCHA or picked something). Look at the current page and carry on from there.',
     );
+    for (const p of listPending())
+      if (p.handoffId === hid && p.kind === 'question') resolvePending(p.id, { approved: true, text: 'Done: I took over and handed it back.' });
     c.release();
   } else return true;
   publish({ type: 'handoff.control', id: hid, on });
@@ -216,6 +225,8 @@ export async function runHandoff(opts: {
   conversationId?: string;
   signal?: AbortSignal;
   onCreated?: (id: string) => void;
+  /** Just open the page for the user to sign in themselves; the browser keeps the session. */
+  signIn?: boolean;
 }): Promise<HandoffResult> {
   const hid = id();
   insert('handoffs', {
@@ -288,6 +299,24 @@ export async function runHandoff(opts: {
     });
     await live.attach(hid, page);
     await page.goto(opts.startUrl || 'about:blank', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+
+    if (opts.signIn) {
+      // Named from the address asked for: the page may have landed on an error or a sign-in host.
+      const site = (() => {
+        try {
+          return new URL(opts.startUrl ?? '').hostname.replace(/^www\./, '') || 'the site';
+        } catch {
+          return 'the site';
+        }
+      })();
+      record('sign-in', `Opened ${site} for you to sign in. Hand it back when you’re done.`);
+      controlHandoff(hid, true);
+      await waitForHandBack(state, signal);
+      const done = `Signed in to ${site}. Errand’s browser remembers it for future tasks.`;
+      record('done', done);
+      setStatus(hid, 'done', done);
+      return { id: hid, status: 'done', result: done, notes, files };
+    }
 
     const s = getSettings().handoff;
     const model = getModel('handoff');

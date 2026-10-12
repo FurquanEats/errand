@@ -56,8 +56,17 @@ const LABELS: Record<string, string> = {
   connect_account: 'Connect',
   integration_add: 'Added an integration',
   usage_stats: 'Looked at usage',
+  subscriptions: 'Checked subscriptions',
+  tracker_list: 'Checked trackers',
+  tracker_update: 'Updated a tracker',
+  spending: 'Looked at spending',
   make_presentation: 'Made a presentation',
   save_file: 'Saved a file',
+  create_document: 'Made a document',
+  file_list: 'Checked your files',
+  file_read: 'Read a file',
+  today_list: 'Checked Today',
+  today_update: 'Updated Today',
   run_command: 'Ran a command',
 };
 

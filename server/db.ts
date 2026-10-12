@@ -108,6 +108,7 @@ for (const sql of [
   'ALTER TABLE mcp_servers ADD COLUMN approval INTEGER NOT NULL DEFAULT 0',
   "ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'normal'",
   'ALTER TABLE actions ADD COLUMN key TEXT',
+  "ALTER TABLE tracked ADD COLUMN category TEXT NOT NULL DEFAULT ''",
 ]) {
   try {
     db.exec(sql);

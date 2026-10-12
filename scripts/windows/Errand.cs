@@ -14,6 +14,11 @@ using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 using Microsoft.Win32;
+#if WEBVIEW
+using System.Runtime.InteropServices;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
+#endif
 
 [assembly: AssemblyTitle("Errand")]
 [assembly: AssemblyProduct("Errand")]
@@ -222,6 +227,7 @@ namespace Errand
             openAfterRestart = false;
             if (install.Status() == 200) { if (open) OpenWindow(); return; }
             StartServer(!open);
+            if (open && OwnWindow) OpenWindow(); // it shows "Starting Errand…" until the server answers
         }
 
         Tray(Install install, bool background)
@@ -243,7 +249,11 @@ namespace Errand
                 ready = true;
                 if (!background) OpenWindow();
             }
-            else StartServer(background);
+            else
+            {
+                StartServer(background);
+                if (!background && OwnWindow) OpenWindow();
+            }
 
             if (!background) FirstRunTip();
             timer.Interval = 2000;
@@ -345,7 +355,8 @@ namespace Errand
             psi.EnvironmentVariables["ERRAND_PORT"] = install.Port.ToString();
             psi.EnvironmentVariables["ERRAND_LAUNCHER"] = install.Exe;
             psi.EnvironmentVariables["PATH"] = Path.GetDirectoryName(install.NodePath) + ";" + Environment.GetEnvironmentVariable("PATH");
-            if (!background) psi.EnvironmentVariables["ERRAND_OPEN"] = "1";
+            // Errand's own window opens from here; otherwise the server opens one in the browser.
+            if (!background && !OwnWindow) psi.EnvironmentVariables["ERRAND_OPEN"] = "1";
             try
             {
                 log = new StreamWriter(new FileStream(install.Log, FileMode.Create, FileAccess.Write, FileShare.ReadWrite), new UTF8Encoding(false));
@@ -398,8 +409,31 @@ namespace Errand
             else if (++misses >= 3) Exit();
         }
 
+#if WEBVIEW
+        // Errand's own window (WebView2), when this copy was built with it and Windows has the runtime.
+        static readonly bool OwnWindow = AppWindow.Available;
+        AppWindow window;
+
+        void ShowOwnWindow()
+        {
+            if (window != null && !window.IsDisposed) { window.Bring(); return; }
+            window = new AppWindow(install);
+            window.FormClosed += (s, e) => window = null;
+            window.Show();
+        }
+#else
+        const bool OwnWindow = false;
+#endif
+
         public void OpenWindow()
         {
+#if WEBVIEW
+            if (OwnWindow)
+            {
+                try { ui.BeginInvoke((MethodInvoker)ShowOwnWindow); } catch (InvalidOperationException) { }
+                return;
+            }
+#endif
             if (Interlocked.Exchange(ref opening, 1) == 1) return;
             ThreadPool.QueueUserWorkItem(_ =>
             {
@@ -491,6 +525,213 @@ namespace Errand
             }
         }
     }
+
+#if WEBVIEW
+    /// <summary>
+    /// Errand's own window: the app in WebView2 with no title bar of Windows' own. Errand's top bar is
+    /// the title bar (drag it, double-click it) and draws minimise, maximise and close. Sign-ins and
+    /// other sites open in your browser.
+    /// </summary>
+    class AppWindow : Form
+    {
+        const int WM_NCCALCSIZE = 0x83, WM_NCHITTEST = 0x84, HTCLIENT = 1, HTTOP = 12, HTTOPLEFT = 13, HTTOPRIGHT = 14;
+        const string OwnKey = @"Software\Zovle\Errand";
+        readonly Install install;
+        readonly WebView2 view = new WebView2();
+        readonly System.Windows.Forms.Timer waiting = new System.Windows.Forms.Timer();
+        bool loaded;
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct RECT { public int Left, Top, Right, Bottom; }
+        [StructLayout(LayoutKind.Sequential)]
+        struct NCCALCSIZE_PARAMS { public RECT Rgrc0, Rgrc1, Rgrc2; public IntPtr Pos; }
+        [DllImport("user32.dll")]
+        static extern int GetSystemMetrics(int index);
+
+        public static bool Available
+        {
+            get
+            {
+                try { return !string.IsNullOrEmpty(CoreWebView2Environment.GetAvailableBrowserVersionString()); }
+                catch (Exception) { return false; } // no runtime, or built without the WebView2 files next to it
+            }
+        }
+
+        static bool Dark
+        {
+            get
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                    return key != null && key.GetValue("AppsUseLightTheme") is int && (int)key.GetValue("AppsUseLightTheme") == 0;
+            }
+        }
+
+        public AppWindow(Install install)
+        {
+            this.install = install;
+            Text = "Errand";
+            Icon = Install.AppIcon(new Size(32, 32));
+            MinimumSize = new Size(720, 500);
+            BackColor = Dark ? Color.FromArgb(0x15, 0x14, 0x12) : Color.FromArgb(0xF2, 0xEF, 0xE8);
+            StartPosition = FormStartPosition.Manual;
+            var screen = Screen.FromPoint(Cursor.Position).WorkingArea;
+            Bounds = SavedBounds() ?? new Rectangle(screen.X + screen.Width / 12, screen.Y + screen.Height / 14, screen.Width * 5 / 6, screen.Height * 6 / 7);
+            using (var key = Registry.CurrentUser.OpenSubKey(OwnKey))
+                if (key != null && (key.GetValue("WindowMaximized") as int?) == 1) WindowState = FormWindowState.Maximized;
+            view.Dock = DockStyle.Fill;
+            view.DefaultBackgroundColor = BackColor;
+            Controls.Add(view);
+            Resize += (s, e) => Framed();
+            FormClosing += (s, e) => SaveBounds();
+            Load += (s, e) => Start();
+            Framed();
+        }
+
+        public void Bring()
+        {
+            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            Activate();
+        }
+
+        // A thin strip above the page, so the top edge can still be dragged to resize.
+        void Framed()
+        {
+            Padding = new Padding(0, WindowState == FormWindowState.Maximized ? 0 : 4, 0, 0);
+            if (loaded) view.CoreWebView2.PostWebMessageAsString(WindowState == FormWindowState.Maximized ? "maximized" : "restored");
+        }
+
+        async void Start()
+        {
+            try
+            {
+                var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(install.Root, "webview"));
+                await view.EnsureCoreWebView2Async(env);
+            }
+            catch (Exception err)
+            {
+                MessageBox.Show("Errand couldn't open its window: " + err.Message, "Errand");
+                Close();
+                return;
+            }
+            var web = view.CoreWebView2;
+            web.Settings.IsStatusBarEnabled = false;
+            web.Settings.AreDevToolsEnabled = false;
+            web.Settings.IsNonClientRegionSupportEnabled = true; // CSS app-region: drag moves the window
+            web.DocumentTitleChanged += (s, e) => Text = web.DocumentTitle;
+            web.NewWindowRequested += (s, e) => { e.Handled = true; OpenOutside(e.Uri); };
+            web.NavigationStarting += (s, e) =>
+            {
+                // Sign-ins (Google, Microsoft, ChatGPT, OpenRouter) run start to finish in your browser:
+                // providers block embedded windows, and the flow must stay in one browser.
+                if (Own(e.Uri) && e.Uri.IndexOf("/api/oauth/", StringComparison.OrdinalIgnoreCase) < 0) return;
+                e.Cancel = true;
+                OpenOutside(e.Uri);
+            };
+            web.PermissionRequested += (s, e) =>
+            {
+                if (Own(e.Uri) && (e.PermissionKind == CoreWebView2PermissionKind.Microphone || e.PermissionKind == CoreWebView2PermissionKind.Notifications))
+                    e.State = CoreWebView2PermissionState.Allow;
+            };
+            web.WebMessageReceived += (s, e) =>
+            {
+                string message;
+                try { message = e.TryGetWebMessageAsString(); } catch (ArgumentException) { return; }
+                if (message == "minimize") WindowState = FormWindowState.Minimized;
+                else if (message == "maximize") WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;
+                else if (message == "close") Close();
+            };
+            web.NavigationCompleted += (s, e) => { if (loaded) Framed(); };
+            loaded = true;
+            web.NavigateToString(Splash());
+            // Show Errand as soon as its server answers (it may still be starting).
+            waiting.Interval = 400;
+            waiting.Tick += (s, e) =>
+            {
+                waiting.Stop();
+                ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    var up = install.Status() == 200;
+                    try { BeginInvoke((MethodInvoker)(() => { if (up) web.Navigate(install.Url + "/"); else waiting.Start(); })); }
+                    catch (InvalidOperationException) { }
+                });
+            };
+            waiting.Start();
+        }
+
+        bool Own(string uri)
+        {
+            if (uri.StartsWith("about:") || uri.StartsWith("data:")) return true;
+            Uri u;
+            return Uri.TryCreate(uri, UriKind.Absolute, out u) && u.Port == install.Port && (u.Host == "127.0.0.1" || u.Host == "localhost");
+        }
+
+        static void OpenOutside(string uri)
+        {
+            Uri u;
+            if (Uri.TryCreate(uri, UriKind.Absolute, out u) && (u.Scheme == "http" || u.Scheme == "https" || u.Scheme == "mailto"))
+                try { Process.Start(u.AbsoluteUri); } catch (Exception) { }
+        }
+
+        string Splash()
+        {
+            var dark = Dark;
+            return "<!doctype html><html><body style=\"margin:0;height:100vh;display:grid;place-items:center;background:" + (dark ? "#151412" : "#f2efe8") +
+                ";color:" + (dark ? "#8f897c" : "#6f695e") + ";font:14px 'Segoe UI Variable Text','Segoe UI',sans-serif;-webkit-app-region:drag\">" +
+                "<div style=\"text-align:center\"><svg width=\"56\" height=\"56\" viewBox=\"0 0 512 512\"><rect width=\"512\" height=\"512\" rx=\"116\" fill=\"#1a1917\"/>" +
+                "<path d=\"M128 262h184a92 92 0 1 0-26 66\" fill=\"none\" stroke=\"#f6f4ef\" stroke-width=\"44\"/><circle cx=\"372\" cy=\"340\" r=\"32\" fill=\"#e2531f\"/></svg>" +
+                "<p>Starting Errand…</p></div></body></html>";
+        }
+
+        Rectangle? SavedBounds()
+        {
+            using (var key = Registry.CurrentUser.OpenSubKey(OwnKey))
+            {
+                var v = key == null ? null : key.GetValue("WindowBounds") as string;
+                if (v == null) return null;
+                var p = v.Split(',');
+                int x, y, w, h;
+                if (p.Length != 4 || !int.TryParse(p[0], out x) || !int.TryParse(p[1], out y) || !int.TryParse(p[2], out w) || !int.TryParse(p[3], out h)) return null;
+                var r = new Rectangle(x, y, w, h);
+                // Only if it's still on a screen (a monitor may have been unplugged).
+                foreach (var s in Screen.AllScreens) if (s.WorkingArea.IntersectsWith(r)) return r;
+                return null;
+            }
+        }
+
+        void SaveBounds()
+        {
+            var r = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+            using (var key = Registry.CurrentUser.CreateSubKey(OwnKey))
+            {
+                key.SetValue("WindowBounds", r.X + "," + r.Y + "," + r.Width + "," + r.Height);
+                key.SetValue("WindowMaximized", WindowState == FormWindowState.Maximized ? 1 : 0);
+            }
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            // No title bar: the client area starts at the top of the window. The side and bottom
+            // borders stay (they're invisible on Windows 10 and 11, and resize the window).
+            if (m.Msg == WM_NCCALCSIZE && m.WParam != IntPtr.Zero)
+            {
+                var top = ((NCCALCSIZE_PARAMS)Marshal.PtrToStructure(m.LParam, typeof(NCCALCSIZE_PARAMS))).Rgrc0.Top;
+                base.WndProc(ref m);
+                var p = (NCCALCSIZE_PARAMS)Marshal.PtrToStructure(m.LParam, typeof(NCCALCSIZE_PARAMS));
+                // A maximised window hangs over the screen edge by its frame; keep the page on screen.
+                p.Rgrc0.Top = top + (WindowState == FormWindowState.Maximized ? GetSystemMetrics(33) + GetSystemMetrics(92) : 0);
+                Marshal.StructureToPtr(p, m.LParam, false);
+                m.Result = IntPtr.Zero;
+                return;
+            }
+            base.WndProc(ref m);
+            if (m.Msg == WM_NCHITTEST && (int)m.Result == HTCLIENT && WindowState == FormWindowState.Normal)
+            {
+                var pt = PointToClient(new Point((short)((long)m.LParam & 0xFFFF), (short)(((long)m.LParam >> 16) & 0xFFFF)));
+                if (pt.Y < 5) m.Result = (IntPtr)(pt.X < 12 ? HTTOPLEFT : pt.X > ClientSize.Width - 12 ? HTTOPRIGHT : HTTOP);
+            }
+        }
+    }
+#endif
 
     /// <summary>Runs the installer that is built into this program, in a window that shows progress.</summary>
     static class Setup
@@ -590,7 +831,8 @@ namespace Errand
                 "ping 127.0.0.1 -n 3 > nul",
                 "rd /s /q \"%ERRAND_ROOT%\\app\" 2> nul",
                 "rd /s /q \"%ERRAND_ROOT%\\node\" 2> nul",
-                "for %%f in (Errand.cmd Errand.vbs Errand.ico errand.log errand.ini update.log Errand.exe.new) do del /f /q \"%ERRAND_ROOT%\\%%f\" 2> nul",
+                "for %%f in (Errand.cmd Errand.vbs Errand.ico errand.log errand.ini update.log Errand.exe.new webview2.version Microsoft.Web.WebView2.Core.dll Microsoft.Web.WebView2.WinForms.dll WebView2Loader.dll) do del /f /q \"%ERRAND_ROOT%\\%%f\" 2> nul",
+                "rd /s /q \"%ERRAND_ROOT%\\webview\" 2> nul",
                 "if \"%ERRAND_REMOVE_DATA%\"==\"1\" rd /s /q \"%ERRAND_ROOT%\\data\" 2> nul",
                 "del /f /q \"%ERRAND_EXE%\" 2> nul",
                 "rd \"%ERRAND_ROOT%\" 2> nul",

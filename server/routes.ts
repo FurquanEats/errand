@@ -312,6 +312,20 @@ api.post('/handoffs', async (c) => {
   });
   return c.json({ id: hid });
 });
+// "Sign in to a site": the page opens with you in control; Errand's browser keeps the session.
+api.post('/handoffs/sign-in', async (c) => {
+  const raw = String((await c.req.json().catch(() => ({}))).url ?? '').trim();
+  const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    if (!raw || !/^https?:$/.test(new URL(url).protocol)) throw new Error();
+  } catch {
+    return c.json({ error: 'Enter a website, like zepto.com' }, 400);
+  }
+  const hid = await new Promise<string>((resolve) => {
+    handoff.runHandoff({ goal: `Sign in to ${new URL(url).hostname.replace(/^www\./, '')}`, startUrl: url, signIn: true, onCreated: resolve }).catch(() => {});
+  });
+  return c.json({ id: hid });
+});
 api.post('/handoffs/:id/cancel', (c) => (handoff.cancelHandoff(c.req.param('id')), c.json({ ok: true })));
 api.post('/handoffs/:id/steer', async (c) => c.json({ ok: handoff.steerHandoff(c.req.param('id'), (await c.req.json()).text) }));
 // The task's screen, streamed only while someone watches it.
@@ -361,6 +375,7 @@ api.post('/pending/:id', async (c) => c.json({ ok: approvals.resolvePending(c.re
 
 // ── Action buttons ────────────────────────────────────────────────────────────
 api.get('/actions', (c) => c.json(actions.listActions()));
+api.post('/actions/clear', (c) => c.json({ cleared: actions.clearActions() }));
 api.post('/actions/refresh', (c) => {
   void actions.generateActions();
   return c.json({ ok: true });

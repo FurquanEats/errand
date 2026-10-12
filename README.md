@@ -34,7 +34,8 @@ It runs on your computer and uses the AI you already have: your **ChatGPT plan**
 - **Scheduled tasks**: “sweep job alerts every 3 hours”, “next Friday at 9, buy the gift card”.
 - **Projects** for long goals like a job search or a move, with tasks, notes and your own documents.
 - **Memory** you can read, edit and delete.
-- **Presentations, files and charts** made from your data, and receipts, tickets and QR codes brought back from websites.
+- **Documents**: attach a PDF or Word file and Errand reads it; ask for a résumé, cover letter, report or itinerary and get a real PDF and Word file. Presentations, charts, and receipts, tickets and QR codes brought back from websites.
+- **Sign in once**: open any site in Errand’s browser and sign in yourself (Google, your grocery app, a job portal); every later task can use it.
 - **Integrations**: Google (Gmail, Calendar, Drive) for any number of accounts, Outlook through Microsoft sign-in, any IMAP mailbox, calendar links, local folders, API keys and every **MCP** server (Slack, GitHub, Notion, Linear, Spotify, Strava, Home Assistant…).
 - **Voice**: dictate, or talk hands-free.
 - **Your phone**: scan a QR code and use Errand from your phone on the same Wi-Fi, or anywhere with [Tailscale](https://tailscale.com).
@@ -75,7 +76,7 @@ Open **Terminal** (on a Mac: <kbd>⌘</kbd> <kbd>Space</kbd>, type _Terminal_, <
 curl -fsSL https://raw.githubusercontent.com/FurquanEats/errand/main/scripts/install.sh | bash
 ```
 
-The installer needs no admin rights and no Git. It brings its own Node.js if you don't have it and keeps everything in one folder (`%LOCALAPPDATA%\Errand` or `~/Errand`). Open Errand from its icon on your Desktop or Start menu (Applications on a Mac). It keeps working quietly in the background, so it can notice things and run your scheduled tasks; closing the window doesn't stop it. On Windows it has an icon by the clock with **Start with Windows**, **Update** and **Quit**, and shows Errand's notifications when its window is closed. The browser agent uses Chrome, Edge or Brave (Windows already has Edge).
+The installer needs no admin rights and no Git. It brings its own Node.js if you don't have it and keeps everything in one folder (`%LOCALAPPDATA%\Errand` or `~/Errand`). Open Errand from its icon on your Desktop or Start menu (Applications on a Mac). It keeps working quietly in the background, so it can notice things and run your scheduled tasks; closing the window doesn't stop it. On Windows, Errand has its own window (its bar is the title bar) and an icon by the clock with **Start with Windows**, **Update** and **Quit**, and shows Errand's notifications when its window is closed. The browser agent uses Chrome, Edge or Brave (Windows already has Edge).
 
 **Update:** ask Errand _“is there an update?”_, or use **Settings → About → Update now**. Your data stays.
 

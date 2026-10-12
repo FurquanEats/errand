@@ -37,7 +37,11 @@ const MIME: Record<string, string> = {
 };
 
 export function storeFile(name: string, data: Buffer | string): StoredFile {
-  const safe = name.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'file';
+  const safe =
+    name
+      .replace(/[–—]/g, '-')
+      .replace(/[^\w.\- ]+/g, '_')
+      .slice(0, 120) || 'file';
   const fid = crypto.randomUUID();
   const file = path.join(DIR, `${fid}__${safe}`);
   fs.writeFileSync(file, data);

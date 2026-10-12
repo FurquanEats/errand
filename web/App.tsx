@@ -16,6 +16,8 @@ import { TaskPanel } from './components/TaskPanel';
 import { SearchModal } from './components/Search';
 import { Icon } from './components/Icon';
 import { Mark } from './components/Mark';
+import { Resizer, savedWidth, saveWidth } from './components/Resizer';
+import { framed, WindowControls } from './components/WindowControls';
 
 export interface Status {
   hasModel: boolean;
@@ -171,6 +173,15 @@ export function App() {
   const [search, setSearch] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const [skipOnboarding, setSkipOnboarding] = useState(false);
+  // Column widths you dragged, remembered on this device (null: the layout's own width).
+  const [sideW, setSideW] = useState<number | null>(() => savedWidth('errand.sideW', 0) || null);
+  const [taskW, setTaskW] = useState<number | null>(() => savedWidth('errand.taskW', 0) || null);
+  const sideDefault = window.innerWidth <= 1320 ? 272 : 300;
+  const taskDefault = window.innerWidth <= 1320 ? 420 : 480;
+  const resize = (key: string, set: (w: number | null) => void, fallback: number) => (w: number) => {
+    set(w === fallback ? null : w);
+    saveWidth(key, w === fallback ? 0 : w);
+  };
 
   const reloadSettings = useCallback(async () => {
     try {
@@ -286,8 +297,20 @@ export function App() {
           </Suspense>
         </main>
       ) : (
-        <div className={`shell${taskOpen ? ' with-task task-open' : ''}${sideOpen ? ' side-open' : ''}`}>
+        <div
+          className={`shell${taskOpen ? ' with-task task-open' : ''}${sideOpen ? ' side-open' : ''}${framed ? ' framed' : ''}`}
+          style={{ ...(sideW ? { '--side-w': `${sideW}px` } : {}), ...(taskW ? { '--task-w': `${taskW}px` } : {}) } as React.CSSProperties}
+        >
           <aside className="side" aria-label="Today">
+            <Resizer
+              label="Resize the Today column"
+              side="right"
+              value={sideW ?? sideDefault}
+              min={240}
+              max={460}
+              fallback={sideDefault}
+              onChange={resize('errand.sideW', setSideW, sideDefault)}
+            />
             <header className="side-head">
               <a className="wordmark" href="#/chat" aria-label="Errand">
                 errand<i>.</i>
@@ -357,8 +380,24 @@ export function App() {
               <Suspense fallback={null}>{center}</Suspense>
             </div>
           </main>
-          <TaskPanel open={taskOpen} onLive={onLive} onClose={() => setTaskOpen(false)} />
+          <TaskPanel
+            open={taskOpen}
+            onLive={onLive}
+            onClose={() => setTaskOpen(false)}
+            resizer={
+              <Resizer
+                label="Resize the browser column"
+                side="left"
+                value={taskW ?? taskDefault}
+                min={360}
+                max={900}
+                fallback={taskDefault}
+                onChange={resize('errand.taskW', setTaskW, taskDefault)}
+              />
+            }
+          />
           <div className="scrim" onClick={() => (setSideOpen(false), setTaskOpen(false))} />
+          <WindowControls />
         </div>
       )}
       <PendingTray route={section === 'c' ? path : chatLike ? '/chat' : path} />

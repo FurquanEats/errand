@@ -1,221 +1,9 @@
 /**
- * Signals: what Errand notices in your email on its own. This file is the cheap, deterministic
- * part, with no AI and no database: which emails deserve a closer look, and the formats that can
- * be read reliably without a model (CI failures, card and UPI alerts, merchant names, habits).
+ * Statistics over what the AI has already read from email: weekly habits ("Zomato most Fridays")
+ * and recurring charges. Understanding the emails themselves is the AI's job (see trackers.ts).
  */
-
-export type Kind = 'ci' | 'payment' | 'job' | 'order' | 'bill' | 'travel' | 'security' | 'todo';
-
-export interface Envelope {
-  from: string; // "Name <address>" or just the address
-  subject: string;
-  sent?: boolean; // from the Sent folder
-}
-
-const has = (re: RegExp, s: string) => re.test(s);
-
-const CODES = /\b(verification code|one[- ]time (pass)?code|otp\b|passcode|login code|sign[- ]in code|confirm your email|verify your email)/i;
-const PROMO =
-  /(\d+% off|\bsale\b|\bdeals?\b|newsletter|webinar|digest|recommended for you|jobs? (alert|you may|for you)|new jobs|is hiring|weekly|top picks|% cashback|coupon)/i;
-
-const DEV =
-  /@([\w-]+\.)*(github\.com|gitlab\.com|vercel\.com|netlify\.com|circleci\.com|travis-ci\.com|bitbucket\.org|render\.com|railway\.app|fly\.io|buildkite\.com|expo\.dev|heroku\.com|cloudflare\.com|azure\.com|dev\.azure\.com)\b/i;
-const FAILED = /\b(fail(ed|ing|ure)?|broken|errored|cancel(l)?ed|did not succeed|unsuccessful)\b/i;
-// "[Action Required] Payment failed" from a hosting service is a bill, not a broken build.
-const BILLING = /\b(payment|invoice|billing|card|subscription|plan|trial|charge|shutdown|suspend)/i;
-
-const MONEY_SENDER =
-  /(alert|bank|card|upi|kotak|hdfc|icici|sbi|axis|idfc|yesbank|indusind|federal|rbl|onecard|slice|jupiter|razorpay|paytm|phonepe|gpay|google pay|stripe|paypal|cred\b|amex|americanexpress|chase|citi|capitalone|discover|wellsfargo|venmo|cashapp|revolut|monzo|wise\.com)/i;
-const MONEY_SUBJECT = /(transaction|debited|spent|payment of|paid|purchase|charge|card (used|alert)|upi|declined|you made a|payment successful|receipt from)/i;
-
-const ATS =
-  /@([\w-]+\.)*(greenhouse\.io|greenhouse-mail\.io|lever\.co|myworkday(jobs)?\.com|workday\.com|ashbyhq\.com|smartrecruiters\.com|jobvite\.com|icims\.com|workable(mail)?\.com|bamboohr\.com|recruitee\.com|teamtailor\.com|wellfound\.com|angel\.co|breezy\.hr|jazzhr\.com|personio\.(de|com)|freshteam\.com|zohorecruit\.com|rippling\.com|hirist\.com|instahyre\.com|cutshort\.io|naukri\.com|indeed\.com|linkedin\.com|ycombinator\.com|workatastartup\.com|otta\.com|welcometothejungle\.com)\b/i;
-const JOB_SUBJECT =
-  /\b(application|applied|applying|candidacy|candidate|interview|assessment|coding (test|challenge)|take[- ]home|offer letter|your resume|your cv|next steps|thank you for (applying|your interest)|hiring team|recruit(er|ing))\b/i;
-const SENT_JOB = /\b(application|applying|resume|cv|candidature|position|role|opening|opportunit(y|ies)|internship|referral)\b/i;
-
-const SHOPS =
-  /(zomato|swiggy|uber ?eats|doordash|grubhub|deliveroo|domino|jubilant|blinkit|grofers|zepto|bigbasket|instacart|amazon|flipkart|myntra|ajio|meesho|nykaa|ebay|etsy|walmart|target\.com|bestbuy|shopify|ikea|decathlon|tatacliq|jiomart|croma|apple\.com|shiprocket|delhivery|bluedart|ekart|fedex|ups\.com|dhl|usps|aramex|dtdc)/i;
-const ORDER_SUBJECT =
-  /\b(your order|order (placed|confirmed|received|#|no\.?|id)|has (been )?(shipped|dispatched|delivered)|shipped|dispatched|out for delivery|arriving|delivered|on its way|refund|return (request|initiated|picked)|cancelled order|order summary)\b/i;
-
-const TRAVEL =
-  /(indigo|goindigo|airindia|air india|vistara|akasa|spicejet|united\.com|delta\.com|aa\.com|southwest|jetblue|alaskaair|ryanair|easyjet|lufthansa|emirates|qatarairways|britishairways|singaporeair|makemytrip|goibibo|cleartrip|easemytrip|ixigo|irctc|redbus|expedia|booking\.com|airbnb|agoda|hotels\.com|kayak|trip\.com|oyo|marriott|hilton|hyatt|ihg|opentable|district|bookmyshow)/i;
-const TRAVEL_SUBJECT =
-  /\b(flight|boarding pass|itinerary|check-?in|web check|pnr|e-?ticket|booking (confirmed|confirmation|id)|reservation|your (trip|stay|booking)|hotel|train ticket|bus ticket|gate change|delayed|rescheduled|table for)\b/i;
-
-const BILL_SUBJECT =
-  /\b(bill|statement|payment due|due (date|on|soon)|amount due|invoice|renew(al|s|ing)?|subscription|free trial|trial (ends|ending|expires)|membership|auto-?pay|auto-?debit|price (change|increase)|payment (failed|declined|unsuccessful)|plan (expir|end)|expir(es|ing|ed))\b/i;
-
-// Things the user has to do: approvals, signatures, renewals, RSVPs.
-const TODO_SUBJECT =
-  /\b(action (required|needed)|awaiting (your )?approval|needs? your (approval|signature)|please (approve|sign|review|complete)|approve|docusign|sign(ature)? (request|required)|rsvp|registration (is )?(due|expir)|licen[cs]e (renewal|expir)|passport|deadline|complete your|kyc)\b/i;
-
-const SECURITY_SUBJECT =
-  /\b(new (sign|log)[- ]?in|security alert|unusual (activity|sign)|suspicious|password (was )?(changed|reset)|new device|login attempt|someone (signed|tried))\b/i;
-
-/** Does this email deserve a closer look, and as what? Envelope only, so it costs nothing. */
-export function candidateKind(e: Envelope): Kind | null {
-  const from = e.from.toLowerCase();
-  const s = e.subject;
-  if (e.sent) return SENT_JOB.test(s) && !/^(re|fwd?):/i.test(s.trim()) ? 'job' : null;
-  if (has(CODES, s)) return null;
-  if (has(DEV, from) && has(FAILED, s) && !has(BILLING, s)) return 'ci';
-  if (has(SECURITY_SUBJECT, s)) return 'security';
-  if (has(MONEY_SENDER, from) && has(MONEY_SUBJECT, s)) return 'payment';
-  if (has(PROMO, s)) return null;
-  if (has(JOB_SUBJECT, s) || (has(ATS, from) && !/linkedin|indeed|naukri/.test(from))) return 'job';
-  if (has(TRAVEL, from) ? has(TRAVEL_SUBJECT, s) || /confirm|ticket|booking/i.test(s) : has(TRAVEL_SUBJECT, s)) return 'travel';
-  if (has(ORDER_SUBJECT, s) || (has(SHOPS, from) && /order|receipt|deliver|ship/i.test(s))) return 'order';
-  if (has(BILL_SUBJECT, s)) return 'bill';
-  if (has(TODO_SUBJECT, s)) return 'todo';
-  return null;
-}
-
-// ── CI failures ─────────────────────────────────────────────────────────────
-
-export interface CIFailure {
-  repo: string;
-  workflow: string;
-  branch: string;
-  url: string;
-}
-
-/**
- * GitHub: "[owner/repo] Run failed: CI - main (8825a5d)". GitLab: "owner/repo | Failed pipeline for main".
- * Netlify, Vercel and others: the project in brackets or after "for".
- */
-export function parseCI(subject: string, text = ''): CIFailure | null {
-  if (!FAILED.test(subject)) return null;
-  const url =
-    text.match(/https:\/\/[^\s"'<>)]+\/(actions\/runs\/\d+|-\/pipelines\/\d+|deploys\/[\w-]+|deployments?\/[\w-]+|pipelines\/[\w-]+)[^\s"'<>)]*/)?.[0] ?? '';
-  const gh = subject.match(
-    /^\[([^\]]+)\]\s+(?:Run (?:failed|cancelled)|(.+?) workflow run (?:failed|cancelled))(?::\s*(.+?)\s+-\s+(\S+?)(?:\s+\((\w+)\))?)?\s*$/i,
-  );
-  if (gh) return { repo: gh[1], workflow: gh[3] ?? gh[2] ?? '', branch: gh[4] ?? '', url };
-  const gl = subject.match(/^(.+?)\s+\|\s+Failed pipeline for\s+(\S+)/i);
-  if (gl) return { repo: gl[1].trim(), workflow: 'pipeline', branch: gl[2], url };
-  const project =
-    subject.match(/\[([^\]\s]+)\]/)?.[1] ?? subject.match(/\bfor\s+(?:project\s+)?["“]?([\w./-]+)/i)?.[1] ?? subject.match(/\bon\s+([\w./-]+)/i)?.[1];
-  return project ? { repo: project, workflow: '', branch: '', url } : null;
-}
-
-// ── Card, UPI and wallet alerts ──────────────────────────────────────────────
-
-export interface Payment {
-  amount: number;
-  currency: string;
-  merchant: string;
-  category: Category;
-  declined: boolean;
-}
-
-const CURRENCY: Record<string, string> = {
-  rs: 'INR',
-  'rs.': 'INR',
-  inr: 'INR',
-  '₹': 'INR',
-  $: 'USD',
-  usd: 'USD',
-  '€': 'EUR',
-  eur: 'EUR',
-  '£': 'GBP',
-  gbp: 'GBP',
-};
-const AMOUNT = /(rs\.?|inr|₹|\$|usd|€|eur|£|gbp)\s?\(?(?:\$?usd\)?\s?)?([\d,]+(?:\.\d{1,2})?)/i;
-const PAYEE =
-  /\b(?:on|at|with|towards|to)\s+(?:vpa\s+\S+\s+)?([a-z0-9][a-z0-9*&.'’\- ]{1,40}?)(?=\s+(?:(?:using|via|through|from|has|was|is|for|ref|on\s+your|on\s+(?:mon|tue|wed|thu|fri|sat|sun)|dated)\b|on\s+\d)|\s*[.,;:\n(]|\s*$)/gi;
-const NOT_PAYEE = /^(your|you|account|a\/c|ac|card|the|this|xx|\d)/i;
-
-/** "Your transaction of Rs.1324.52 on ZOMATO LIMITED using Kotak Bank Debit Card…" → Zomato, 1324.52 INR. */
-export function parsePayment(subject: string, text: string): Payment | null {
-  const all = `${subject}\n${text}`.replace(/\s+/g, ' ');
-  if (/\b(credited|received|refund(ed)?|cashback|reversal|reversed)\b/i.test(subject)) return null;
-  const amt = all.match(AMOUNT);
-  if (!amt) return null;
-  const amount = Number(amt[2].replace(/,/g, ''));
-  if (!amount) return null;
-  let merchant = '';
-  // Razorpay-style: "ZEPTO MARKETPLACE PRIVATE LIMITED ₹2346.00 Paid Successfully" / "Payment successful for X".
-  const forName = subject.match(/(?:payment (?:successful|received|done) (?:for|to)|receipt from|your payment to)\s+(.+)$/i)?.[1];
-  if (forName) merchant = forName;
-  else
-    for (const m of all.slice(amt.index!).matchAll(PAYEE)) {
-      if (!NOT_PAYEE.test(m[1].trim())) {
-        merchant = m[1];
-        break;
-      }
-    }
-  if (!merchant) return null;
-  const { name, category } = brand(merchant);
-  return {
-    amount,
-    currency: CURRENCY[amt[1].toLowerCase()] ?? 'INR',
-    merchant: name,
-    category,
-    declined: /declined|could not be processed|insufficient funds|failed|unsuccessful/i.test(all),
-  };
-}
-
-// ── Merchant names ──────────────────────────────────────────────────────────
 
 export type Category = 'food' | 'groceries' | 'rides' | 'shopping' | 'subscriptions' | 'travel' | 'bills' | 'other';
-
-const BRANDS: [RegExp, string, Category][] = [
-  [/zomato/i, 'Zomato', 'food'],
-  [/swiggy\s*instamart|instamart/i, 'Swiggy Instamart', 'groceries'],
-  [/swiggy|bundl tech/i, 'Swiggy', 'food'],
-  [/jubilant|domino/i, "Domino's", 'food'],
-  [/uber\s*eats/i, 'Uber Eats', 'food'],
-  [/doordash/i, 'DoorDash', 'food'],
-  [/grubhub/i, 'Grubhub', 'food'],
-  [/deliveroo/i, 'Deliveroo', 'food'],
-  [/eatsure|rebel foods/i, 'EatSure', 'food'],
-  [/mcdonald|hardcastle/i, "McDonald's", 'food'],
-  [/starbucks|tata starbucks/i, 'Starbucks', 'food'],
-  [/\bkfc\b|devyani/i, 'KFC', 'food'],
-  [/pizza\s*hut/i, 'Pizza Hut', 'food'],
-  [/chipotle/i, 'Chipotle', 'food'],
-  [/zepto|kiranakart/i, 'Zepto', 'groceries'],
-  [/blink\s*commerce|blinkit|grofers/i, 'Blinkit', 'groceries'],
-  [/bigbasket|innovative retail|supermarket grocery/i, 'BigBasket', 'groceries'],
-  [/instacart|maplebear/i, 'Instacart', 'groceries'],
-  [/jiomart/i, 'JioMart', 'groceries'],
-  [/uber/i, 'Uber', 'rides'],
-  [/\bola\b|ani technologies/i, 'Ola', 'rides'],
-  [/rapido|roppen/i, 'Rapido', 'rides'],
-  [/\blyft\b/i, 'Lyft', 'rides'],
-  [/amazon|amzn/i, 'Amazon', 'shopping'],
-  [/flipkart/i, 'Flipkart', 'shopping'],
-  [/myntra/i, 'Myntra', 'shopping'],
-  [/nykaa/i, 'Nykaa', 'shopping'],
-  [/meesho/i, 'Meesho', 'shopping'],
-  [/\bajio\b|reliance retail/i, 'AJIO', 'shopping'],
-  [/netflix/i, 'Netflix', 'subscriptions'],
-  [/spotify/i, 'Spotify', 'subscriptions'],
-  [/youtube|google\s*play|google\s*one/i, 'Google', 'subscriptions'],
-  [/apple\.com\/bill|itunes|apple services/i, 'Apple', 'subscriptions'],
-  [/openai|chatgpt/i, 'OpenAI', 'subscriptions'],
-  [/hotstar|jiocinema|jiohotstar/i, 'JioHotstar', 'subscriptions'],
-  [/airtel/i, 'Airtel', 'bills'],
-  [/\bjio\b|reliance jio/i, 'Jio', 'bills'],
-  [/indigo|interglobe/i, 'IndiGo', 'travel'],
-  [/makemytrip/i, 'MakeMyTrip', 'travel'],
-  [/irctc/i, 'IRCTC', 'travel'],
-];
-
-/** "PYU*Jubilant FoodWorks" → Domino's (food); "ZEPTO MARKETPLACE PRIVATE" → Zepto (groceries). */
-export function brand(raw: string): { name: string; category: Category } {
-  for (const [re, name, category] of BRANDS) if (re.test(raw)) return { name, category };
-  const name = raw
-    .replace(/^[a-z]{2,4}\*\s*/i, '')
-    .replace(/\s+(marketplace|private|pvt|p|ltd|limited|inc|llc|llp|co|corp|corporation|india|technologies)\.?\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-  return { name: name || raw.trim(), category: 'other' };
-}
 
 // ── Habits ───────────────────────────────────────────────────────────────────
 
@@ -269,3 +57,52 @@ export function findHabits(purchases: { merchant: string; category: Category; at
 }
 
 export const hourLabel = (h: number) => `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`;
+
+export interface Subscription {
+  merchant: string;
+  amount: number;
+  currency: string;
+  every: 'week' | 'month' | 'year';
+  charges: number;
+  last: number;
+  next: number;
+}
+
+const CADENCE: [Subscription['every'], number, number][] = [
+  ['week', 6, 8],
+  ['month', 26, 35],
+  ['year', 350, 380],
+];
+
+/**
+ * Recurring charges: the same merchant, about the same amount, at a steady weekly, monthly or
+ * yearly rhythm ("Netflix, ₹649 a month"). One that has missed two charges has stopped.
+ */
+export function findSubscriptions(
+  purchases: { merchant: string; amount: number | null; currency: string; at: number; category?: string }[],
+  now = Date.now(),
+): Subscription[] {
+  const by = new Map<string, { amount: number; currency: string; at: number }[]>();
+  for (const p of purchases) {
+    // Food, groceries and rides repeat too, but those are habits, not subscriptions.
+    if (!p.amount || p.amount <= 0 || p.at > now || ['food', 'groceries', 'rides'].includes(p.category ?? '')) continue;
+    by.set(p.merchant, [...(by.get(p.merchant) ?? []), { amount: p.amount, currency: p.currency, at: p.at }]);
+  }
+  const out: Subscription[] = [];
+  for (const [merchant, list] of by) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => a.at - b.at);
+    const amounts = list.map((p) => p.amount).sort((a, b) => a - b);
+    const median = amounts[Math.floor(amounts.length / 2)];
+    const same = list.filter((p) => Math.abs(p.amount - median) <= median * 0.15);
+    if (same.length < 2) continue;
+    const gaps = same.slice(1).map((p, i) => (p.at - same[i].at) / 86400_000);
+    const fit = CADENCE.find(([, lo, hi]) => gaps.every((g) => g >= lo && g <= hi));
+    if (!fit || (fit[0] === 'week' && same.length < 3)) continue;
+    const period = (fit[1] + fit[2]) / 2;
+    const last = same[same.length - 1];
+    if ((now - last.at) / 86400_000 > period * 2) continue; // stopped
+    out.push({ merchant, amount: median, currency: last.currency, every: fit[0], charges: same.length, last: last.at, next: last.at + period * 86400_000 });
+  }
+  return out.sort((a, b) => b.amount - a.amount);
+}

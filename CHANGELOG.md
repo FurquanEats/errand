@@ -2,6 +2,19 @@
 
 Every change that matters to people using Errand. To update, ask Errand “is there an update?” or use **Settings → About → Update now**; your data stays.
 
+## 1.0.1 · 2026-10-12
+
+- **Documents in and out.** Attach a PDF or Word file and Errand reads it, whichever AI you use. Ask for a résumé, cover letter, report, itinerary or invoice and it makes a real **PDF and Word** file, and can upload it to a website for you.
+- **Sign in once, use it everywhere.** “Sign in to a site” opens Google, your grocery app or a job portal in Errand’s browser with you in control; every later task uses that session. The browser agent now checks it’s signed in before account work, uses your saved logins, Google sign-in or a one-time code, and asks you to take over when it can’t.
+- **Orders confirmed properly.** Before placing an order the agent shows the items, the total, the delivery address and the payment method for your OK.
+- **Errand understands your email with AI, not rules.** It skims every new email to decide what matters, then reads those: employers rather than job boards, real shops rather than bank boilerplate, duplicates merged. A one-time clean-up tidies what older versions saved.
+- **Quieter.** Security emails no longer fill the chat, and only changes that matter (an interview, a delivery, a bill due) get a note.
+- **New: follow-up nudges** for applications with no reply after 10 days, and **subscriptions**: ask “what am I subscribed to?”.
+- **Your Today column, your way.** Hide any section from its menu, clear “Needs you” in one go, or just ask: “delete all my panels” now does what you mean.
+- **Errand’s own window on Windows.** No browser frame: Errand’s bar is the title bar, with minimise, maximise and close beside New chat. Drag it to move, double-click to maximise.
+- **Resizable columns.** Drag the edge of Today or the browser to make it wider; double-click to reset.
+- **Fixes:** long links no longer push the chat or the browser view off screen; the Start-menu icon shows on Windows; Errand answers job questions from its trackers across every inbox instead of saying it found nothing.
+
 ## 1.0.0 · 2026-10-11
 
 The first stable release: the free, open-source Hark.

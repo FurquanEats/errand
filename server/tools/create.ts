@@ -2,7 +2,9 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { exec } from 'node:child_process';
 import { all, get } from '../db.ts';
-import { buildPresentation, storeFile } from '../documents.ts';
+import fs from 'node:fs';
+import { buildPresentation, listStoredFiles, readStoredFile, storeFile } from '../documents.ts';
+import { makeDocument, readDocument } from '../office.ts';
 import { getSettings } from '../settings.ts';
 import { requestApproval } from '../approvals.ts';
 import type { ToolContext } from './index.ts';
@@ -55,6 +57,44 @@ export const createTools = (ctx: ToolContext) => ({
     execute: async ({ title, slides }) => {
       const file = buildPresentation(title, slides);
       return { file, action: { label: `Open “${title}”`, url: file.url, note: `${slides.length} slides` } };
+    },
+  }),
+  create_document: tool({
+    description:
+      'Make a real document for the user to download: a résumé or CV, cover letter, report, letter, invoice, itinerary, notes. Write the full content as Markdown (# name/title, ## sections, lists, **bold**, tables, links) and pick the formats: pdf and docx are the usual pair; html, md, csv also work. ' +
+      'style resume is compact and one-page friendly; letter suits cover letters; document for everything else. The files are saved, so the browser agent can upload them (e.g. a CV to a job form).',
+    inputSchema: z.object({
+      title: z.string().describe('file name without extension, e.g. "Mohammed Furquan – Resume"'),
+      content: z.string().describe('the whole document in Markdown'),
+      formats: z
+        .array(z.enum(['pdf', 'docx', 'html', 'md', 'csv']))
+        .min(1)
+        .default(['pdf', 'docx']),
+      style: z.enum(['document', 'resume', 'letter']).default('document'),
+    }),
+    execute: async ({ title, content, formats, style }) => {
+      const files = [];
+      for (const format of [...new Set(formats)]) files.push(await makeDocument({ title, format, content, style }));
+      return { files, note: 'Link each file for the user with its url.' };
+    },
+  }),
+  file_list: tool({
+    description:
+      'Files the user gave Errand (attachments) or Errand made (documents, downloads, screenshots), newest first. Use it to find "my resume" and similar.',
+    inputSchema: z.object({}),
+    execute: async () => listStoredFiles(40).map((f) => ({ name: f.name, size: f.size, url: f.url })),
+  }),
+  file_read: tool({
+    description: 'Read the text of a file from file_list (PDF, Word, text, CSV, Markdown), e.g. the user’s current résumé before rewriting it.',
+    inputSchema: z.object({ name: z.string() }),
+    execute: async ({ name }) => {
+      const f =
+        listStoredFiles(200).find((x) => x.name.toLowerCase() === name.toLowerCase()) ??
+        listStoredFiles(200).find((x) => x.name.toLowerCase().includes(name.toLowerCase()));
+      const stored = f && readStoredFile(f.id);
+      if (!stored) return { error: `No file named "${name}". Call file_list to see the names.` };
+      const text = await readDocument(stored.name, stored.mime, fs.readFileSync(stored.path));
+      return text === null ? { error: 'That file has no readable text (an image or a scanned PDF).' } : { name: stored.name, text: text.slice(0, 60_000) };
     },
   }),
   save_file: tool({

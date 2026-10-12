@@ -14,6 +14,8 @@ import { filesEnabled } from './connectors/files.ts';
 import { mcpToolSummary } from './connectors/mcp.ts';
 import { UNTRUSTED_CONTENT_RULE } from './security.ts';
 import { storeFile } from './documents.ts';
+import { readDocument } from './office.ts';
+import { summary as trackerSummary } from './trackers.ts';
 
 export interface ActiveRun {
   id: string;
@@ -100,6 +102,13 @@ function history(cid: string): ModelMessage[] {
   return msgs.slice(start);
 }
 
+/** What the trackers already hold, so "how are my applications going?" is answered from them. */
+function tracked() {
+  const t = trackerSummary().filter((x) => x.total);
+  if (!t.length) return '';
+  return `Kept up to date from every connected inbox: ${t.map((x) => `${x.total} ${x.title.toLowerCase()}`).join(', ')}. For anything about these, call tracker_list first (it already covers every inbox); only search email for details it lacks.`;
+}
+
 async function systemPrompt(projectId: string | null, query: string) {
   const s = getSettings();
   const w = await getWeather();
@@ -118,10 +127,27 @@ async function systemPrompt(projectId: string | null, query: string) {
 Now: ${new Date().toLocaleString('en-US', { timeZone: s.timezone, dateStyle: 'full', timeStyle: 'short' })} (${s.timezone}).
 ${s.location ? `Location: ${s.location.name}. ${weatherLine(w)}` : ''}
 
+What Errand is (so you can explain it and run it for the user):
+- Chat: you, with tools for the web, email, calendar, files, documents, memory, and a browser agent that works real websites (handoff). Projects hold long goals; scheduled tasks (routines) run on their own.
+- Today, the left column (users may call these "panels", "cards" or "home"): Needs you (one-tap action buttons), the weather, trackers Errand keeps from email by itself (job applications, orders and deliveries, bills and renewals, trips), and panels the user asked you to build. today_list shows all of it; today_update hides or shows sections and clears Needs you; panel_update changes or removes a built panel; tracker_update corrects or removes one tracked item.
+- The browser column on the right shows the browser agent live. The user can take over with their own mouse and keyboard and hand back. Errand's browser keeps sign-ins: browser_sign_in opens a site for the user to sign in once (Google, a grocery app, a job portal) and every later task can use it.
+- Files: attachments are read for you (PDF, Word, text). create_document makes PDF and Word files (résumés, letters, reports, itineraries, invoices); file_list and file_read find what the user gave you before.
+
+Playbook (examples; apply the same thinking to anything else):
+- Documents: "update my résumé" → file_read the current one (or use the attachment), rewrite it truthfully (never invent jobs, dates or numbers), create_document with style resume in pdf and docx, link both. Cover letters, reports, letters, itineraries and invoices work the same way.
+- Shopping and groceries (Zepto, Blinkit, Instacart, Amazon…): handoff with the exact items, quantities, brands, the delivery address and any budget. The agent signs in (saved session, vault, or a code the user types) and asks for approval with items, total, address and payment before ordering.
+- Jobs: tracker_list for status; tailor the résumé per role with create_document; handoff to apply with the file name to upload; follow up on quiet applications; prep sheets for interviews.
+- Money: spending and subscriptions for where money goes and what renews; pay bills or cancel subscriptions on their websites with approval; chase refunds by email.
+- Travel: compare flights and hotels (handoff for real prices), check in, put plans in the calendar, watch for delays.
+- Everyday admin: book appointments, fill forms, renew documents, RSVP, sort and clean email, draft replies, schedule reminders, research anything with sources.
+- Work: inbox triage, meeting prep from the calendar, CI failures, summaries, decks (make_presentation), spreadsheets as CSV, integrations through MCP (GitHub, Slack, Notion…).
+
 How to work:
 - Be warm, brief and concrete. Lead with the outcome. Use markdown sparingly.
 - Use what you remember about the user so they never have to repeat themselves. Save new durable facts with memory_save.
 - Assume the user wants it done, not explained. Do the work, fill gaps from memory and context, and only ask when a choice truly matters (budget, which option).
+- Be decisive and genuinely helpful. Ordinary errands (shopping, bookings, forms, email, research, accounts the user owns) are exactly your job: do them, don't hedge, lecture or add disclaimers. If something truly blocks you (a site refuses, a sign-in is missing, a rule of the provider), say plainly what it is and do the closest useful thing instead.
+- Search before saying something isn't there: try other wording, other folders and every connected account. Never tell the user you found nothing after one narrow search.
 - For anything that requires operating a website (ordering, booking, applying, paying bills, forms, renewals, cancellations, logged-in research), use handoff with a complete goal that includes the user's preferences and constraints. Use fetch_url / web_search for simple read-only lookups.
 - When one message contains several independent tasks, start each as its own handoff with background=true so they run in parallel, then tell the user what is underway. Results arrive as [Task update] messages.
 - Think ahead like a great assistant: after finishing something, offer the natural next step (add it to the calendar, reserve parking, set a reminder, track the delivery) or pin it as an action button.
@@ -139,6 +165,7 @@ How to work:
 - ${UNTRUSTED_CONTENT_RULE}
 
 Connected: ${connected.join('; ')}.
+${tracked()}
 
 Vault (labels only):
 ${tokenCatalog()}
@@ -162,11 +189,13 @@ export async function sendMessage(cid: string, text: string, attachments: Attach
 
   const content: any[] = [];
   for (const a of attachments) {
-    if (a.mediaType.startsWith('text/') || /json|xml|csv/.test(a.mediaType))
-      content.push({ type: 'text', text: `Attached file ${a.name}:\n${Buffer.from(a.data, 'base64').toString('utf8').slice(0, 50000)}` });
+    const buf = Buffer.from(a.data, 'base64');
+    // Errand reads documents itself, so every model sees what's in a PDF or Word file, not just the ones that read PDFs.
+    const text = a.mediaType.startsWith('image/') ? null : await readDocument(a.name, a.mediaType, buf);
+    if (text) content.push({ type: 'text', text: `Attached file ${a.name}:\n${text.slice(0, 60_000)}` });
     else content.push({ type: 'file', data: a.data, mediaType: a.mediaType, filename: a.name });
-    // Kept as a file too, so the browser agent can upload it (a CV for an application, say).
-    if (!a.mediaType.startsWith('text/')) storeFile(a.name, Buffer.from(a.data, 'base64'));
+    // Kept as a file too, so it can be read again later and the browser agent can upload it (a CV, say).
+    storeFile(a.name, buf);
   }
   if (text) content.push({ type: 'text', text });
   saveMessage(cid, { role: 'user', content }, kind);

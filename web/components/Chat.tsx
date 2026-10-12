@@ -5,10 +5,10 @@ import { useApp } from '../context';
 
 const STARTERS = [
   'What needs my attention today?',
-  'Find the cheapest flight to Goa next Friday',
-  'Keep track of my job applications',
+  'Which subscriptions am I paying for, and which could I cancel?',
+  'Where are my orders?',
+  'Find the cheapest flight to Lisbon next Friday',
   'Brief me every morning at 8',
-  'Put Errand on my phone',
 ];
 import { speak, startListening, stopSpeaking, type Listening } from '../voice';
 import { Composer, type Attachment } from './Composer';

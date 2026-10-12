@@ -1,8 +1,11 @@
 # Builds Errand.exe (scripts/windows/Errand.cs) with the C# compiler that comes with Windows.
 # The installer runs this on your computer; the release workflow runs it to make Errand-Setup.exe.
 #
-#   powershell -File scripts/windows/build.ps1 -Out Errand.exe
-param([Parameter(Mandatory = $true)][string]$Out, [string]$Version)
+#   powershell -File scripts/windows/build.ps1 -Out Errand.exe [-WebView <folder>]
+#
+# -WebView points at a folder holding Microsoft.Web.WebView2.Core.dll and .WinForms.dll: Errand then
+# gets its own window (no title bar of Windows' own) instead of opening in the browser.
+param([Parameter(Mandatory = $true)][string]$Out, [string]$Version, [string]$WebView)
 
 $ErrorActionPreference = 'Stop'
 $repo = Resolve-Path (Join-Path $PSScriptRoot '..\..')
@@ -27,9 +30,13 @@ try {
   $icon = Join-Path $repo 'web\public\icon.ico'
   $installer = Join-Path $repo 'scripts\install.ps1'
   $outPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Out)
+  $webArgs = @()
+  if ($WebView) {
+    $webArgs = @('/define:WEBVIEW', "/reference:$(Join-Path $WebView 'Microsoft.Web.WebView2.Core.dll')", "/reference:$(Join-Path $WebView 'Microsoft.Web.WebView2.WinForms.dll')")
+  }
   & $csc /nologo /target:winexe /optimize+ /codepage:65001 /utf8output "/out:$outPath" "/win32icon:$icon" "/win32manifest:$here\Errand.manifest" `
     "/resource:$installer,install.ps1" "/resource:$icon,icon.ico" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll `
-    "$here\Errand.cs" $info
+    $webArgs "$here\Errand.cs" $info
   if ($LASTEXITCODE -ne 0) { throw 'Building Errand.exe failed.' }
 } finally {
   Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue

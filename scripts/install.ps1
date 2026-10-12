@@ -138,15 +138,52 @@ echo.
   # same version.
   $version = (Get-Content (Join-Path $AppDir 'package.json') -Raw | ConvertFrom-Json).version
   $built = $false
+  $build = Join-Path $AppDir 'scripts\windows\build.ps1'
+  # Errand's own window (no browser frame, its bar is the title bar) runs on WebView2, which comes with
+  # Windows 11 and current Windows 10. Three small files from Microsoft's WebView2 SDK sit next to
+  # Errand.exe; they come from NuGet, pinned to one version and checked against its SHA-256.
+  $webview = $null
   try {
-    $setup = $env:ERRAND_SETUP_EXE
-    if ($setup -and (Test-Path $setup) -and $setup -ne $exe -and
-        (Get-Item $setup).VersionInfo.ProductVersion -eq $version -and
-        (Get-AuthenticodeSignature $setup).Status -eq 'Valid') {
-      Copy-Item $setup "$exe.new" -Force
-    } else {
-      & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $AppDir 'scripts\windows\build.ps1') -Out "$exe.new" | Out-Null
-      if ($LASTEXITCODE -ne 0) { throw 'build failed' }
+    $wvVersion = '1.0.4191.47'
+    $wvHash = 'F492BBF547D0DA329553B6727435B677579B1E9F91CC9E4A1AD029366D5F23D0'
+    $marker = Join-Path $Root 'webview2.version'
+    $files = 'Microsoft.Web.WebView2.Core.dll', 'Microsoft.Web.WebView2.WinForms.dll', 'WebView2Loader.dll'
+    $have = (Test-Path $marker) -and ((Get-Content $marker -Raw).Trim() -eq $wvVersion) -and -not ($files | Where-Object { -not (Test-Path (Join-Path $Root $_)) })
+    if (-not $have) {
+      $arch = switch ($env:PROCESSOR_ARCHITECTURE) { 'ARM64' { 'win-arm64' } 'x86' { 'win-x86' } default { 'win-x64' } }
+      $pkg = Join-Path ([IO.Path]::GetTempPath()) "errand-webview2-$wvVersion.nupkg"
+      Invoke-WebRequest "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/$wvVersion/microsoft.web.webview2.$wvVersion.nupkg" -OutFile $pkg -UseBasicParsing
+      if ((Get-FileHash $pkg -Algorithm SHA256).Hash -ne $wvHash) { Remove-Item $pkg -Force; throw 'The WebView2 package did not match its checksum' }
+      Add-Type -AssemblyName System.IO.Compression.FileSystem
+      $zip = [IO.Compression.ZipFile]::OpenRead($pkg)
+      try {
+        $want = @{ 'lib/net462/Microsoft.Web.WebView2.Core.dll' = $files[0]; 'lib/net462/Microsoft.Web.WebView2.WinForms.dll' = $files[1]; "runtimes/$arch/native/WebView2Loader.dll" = $files[2] }
+        foreach ($entry in $zip.Entries) {
+          if ($want.ContainsKey($entry.FullName)) { [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $Root $want[$entry.FullName]), $true) }
+        }
+      } finally { $zip.Dispose(); Remove-Item $pkg -Force -ErrorAction SilentlyContinue }
+      if ($files | Where-Object { -not (Test-Path (Join-Path $Root $_)) }) { throw 'The WebView2 package was missing files' }
+      Set-Content $marker $wvVersion -Encoding ASCII
+    }
+    $webview = $Root
+  } catch {
+    Info "Errand will open in your browser ($($_.Exception.Message))."
+  }
+  try {
+    if ($webview) {
+      & powershell -NoProfile -ExecutionPolicy Bypass -File $build -Out "$exe.new" -WebView $webview | Out-Null
+      if ($LASTEXITCODE -ne 0) { Info 'Errand will open in your browser.'; $webview = $null }
+    }
+    if (-not $webview) {
+      $setup = $env:ERRAND_SETUP_EXE
+      if ($setup -and (Test-Path $setup) -and $setup -ne $exe -and
+          (Get-Item $setup).VersionInfo.ProductVersion -eq $version -and
+          (Get-AuthenticodeSignature $setup).Status -eq 'Valid') {
+        Copy-Item $setup "$exe.new" -Force
+      } else {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $build -Out "$exe.new" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'build failed' }
+      }
     }
     Move-Item "$exe.new" $exe -Force
     $built = $true
@@ -179,7 +216,8 @@ CreateObject("WScript.Shell").Run "cmd /c """"LAUNCHER"" > ""LOG"" 2>&1""", 0, F
     $lnk.Arguments = ''
     if ($built) {
       $lnk.TargetPath = $exe
-      $lnk.IconLocation = "$exe,0"
+      # The .ico file, not the exe: Start search draws it reliably at every size.
+      $lnk.IconLocation = "$icon,0"
     } elseif ($hidden) {
       $lnk.TargetPath = $wscript
       $lnk.Arguments = "`"$vbs`""
@@ -193,6 +231,8 @@ CreateObject("WScript.Shell").Run "cmd /c """"LAUNCHER"" > ""LOG"" 2>&1""", 0, F
     $lnk.Description = 'Errand, your personal AI agent'
     $lnk.Save()
   }
+  # Windows caches shortcut icons; without this, Start search can keep showing a blank one after an update.
+  try { Start-Process -FilePath (Join-Path $env:WINDIR 'System32\ie4uinit.exe') -ArgumentList '-show' -WindowStyle Hidden -Wait -ErrorAction Stop } catch {}
 
   # Listed in Settings > Apps > Installed apps, with an Uninstall button (no admin rights needed).
   if ($built) {

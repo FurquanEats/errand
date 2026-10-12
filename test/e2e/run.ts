@@ -138,6 +138,36 @@ try {
   msgs = await say('what version am I on?');
   check('version and updates from chat', toolOutput(msgs, 'app_about')?.version === JSON.parse(fs.readFileSync('package.json', 'utf8')).version);
 
+  // ── Documents and Today, from chat ──────────────────────────────────────
+  const { Document, Packer, Paragraph } = await import('docx');
+  const cv = await Packer.toBuffer(new Document({ sections: [{ children: [new Paragraph('Frontend engineer with five years of React')] }] }));
+  await api(`/conversations/${main}/messages`, {
+    text: 'make this a one-page resume',
+    attachments: [{ name: 'old-cv.docx', mediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data: cv.toString('base64') }],
+  });
+  for (let i = 0; i < 60 && (await api(`/conversations/${main}`)).data.activeRun; i++) await sleep(250);
+  msgs = (await api(`/conversations/${main}`)).data.messages;
+  check('an attached Word file is read for the AI', /Frontend engineer with five years of React/.test(allText(msgs)));
+  const made = toolOutput(msgs, 'create_document');
+  const pdf = made?.files?.find((f: any) => f.name.endsWith('.pdf'));
+  const word = made?.files?.find((f: any) => f.name.endsWith('.docx'));
+  const pdfBytes = pdf ? Buffer.from(await (await fetch(BASE + pdf.url)).arrayBuffer()) : Buffer.alloc(0);
+  const wordBytes = word ? Buffer.from(await (await fetch(BASE + word.url)).arrayBuffer()) : Buffer.alloc(0);
+  check(
+    'a résumé is made as a real PDF and Word file',
+    pdfBytes.subarray(0, 5).toString() === '%PDF-' && wordBytes.subarray(0, 2).toString() === 'PK',
+    made?.error,
+  );
+
+  await api('/actions', undefined); // warm
+  msgs = await say('delete all my panels');
+  const hidden = (await api('/settings')).data.today?.hidden ?? [];
+  check(
+    '“delete all my panels” clears Today from chat',
+    ['weather', 'jobs', 'bills'].every((h) => hidden.includes(h)) && !((await api('/actions')).data as any[]).length,
+  );
+  await api('/settings', { today: { hidden: [] } }, 'PUT');
+
   msgs = await say('remember my favourite colour');
   check(
     'memory saved',
@@ -203,6 +233,20 @@ try {
     check('what you typed while in control reaches the page', /Typed: hello/.test(finished?.result ?? ''), finished?.result);
     check('the agent carries on after you hand back', finished?.status === 'done' && /File: cv\.pdf/.test(finished?.result ?? ''));
     check('the final screen is kept', typeof finished?.frame === 'string' && finished.frame.length > 1000);
+
+    // ── Sign in to a site: the page opens with you in control ──────────────
+    const signIn = (await api('/handoffs/sign-in', { url: `http://localhost:${MODEL_PORT}/shop` })).data.id as string;
+    let opened: any = null;
+    for (let i = 0; i < 40 && !opened?.control; i++) (await sleep(250), (opened = (await api(`/handoffs/${signIn}`)).data));
+    check('“sign in to a site” opens it with you in control', opened?.control === true && opened.status === 'running');
+    await api(`/handoffs/${signIn}/control`, { on: false });
+    let signedIn: any = null;
+    for (let i = 0; i < 40 && signedIn?.status !== 'done'; i++) (await sleep(250), (signedIn = (await api(`/handoffs/${signIn}`)).data));
+    check(
+      'handing back finishes the sign-in',
+      signedIn?.status === 'done' && /Signed in to localhost. .*remembers it/.test(signedIn.result ?? ''),
+      signedIn?.result,
+    );
 
     msgs = await say('log me in, it needs an otp', { code: '482913' });
     check('OTP code reaches the site', /Logged in with code 482913/.test(toolOutput(msgs, 'handoff')?.result ?? ''));

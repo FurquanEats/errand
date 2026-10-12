@@ -31,6 +31,15 @@ function classifyMail(prompt: string) {
     const subject = block.match(/Subject: (.*?) \| Looks like/)?.[1] ?? '';
     const date = block.match(/\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?/g)?.[1] ?? '';
     const item = (o: object) => ({ id, amount: '', date: '', ref: '', note: '', title: '', ...o });
+    // What a model reads from CI emails, card alerts and an application the user emailed.
+    const ci = subject.match(/^\[([^\]]+)\] Run failed: (\S+) - (\S+)/);
+    if (ci) return item({ kind: 'ci', status: '', name: ci[1], title: ci[2], ref: ci[3], link: block.match(/https:\/\/\S+/)?.[0] ?? '' });
+    const paid = block.match(/Rs\.([\d.]+) on (\w+)/);
+    if (/transaction/i.test(subject) && paid)
+      return item({ kind: 'payment', status: '', name: paid[2] === 'ZOMATO' ? 'Zomato' : paid[2], amount: `₹${paid[1]}`, category: 'food' });
+    const to = block.match(/sent to [^@\s]+@(\w+)\./)?.[1];
+    if (to && /application/i.test(subject))
+      return item({ kind: 'job', status: 'emailed', name: to.charAt(0).toUpperCase() + to.slice(1), title: 'Software Developer', note: `You emailed ${to}.` });
     if (/applying to (\w+)/.test(subject))
       return item({ kind: 'job', status: 'received', name: subject.match(/applying to (\w+)/)![1], title: 'Product Engineer' });
     if (/interview/i.test(subject))
@@ -88,6 +97,17 @@ function decide(body: any, port: number): Out {
     if (listed?.[0]?.id && u.includes('panel')) return call('panel_update', { id: listed[0].id, size: 'lg' });
     if (last.role === 'tool') return text(`All done. ${textOf(last.content).slice(0, 300)}`);
     if (u.includes('pause')) return call('routine_list', {});
+    // What the model would do with an attached CV and "make it a one-page résumé".
+    if (u.includes('one-page resume')) {
+      const attached = /Attached file [^:]+:\n([\s\S]*?)(?:\n\n|$)/.exec(textOf(users[users.length - 1]?.content))?.[1] ?? '';
+      return call('create_document', {
+        title: 'Sam Lee - Resume',
+        content: `# Sam Lee\n${attached.split('\n')[0]}\n\n## Experience\n- Built things that worked`,
+        formats: ['pdf', 'docx'],
+        style: 'resume',
+      });
+    }
+    if (u.includes('delete all my panels')) return call('today_update', { hide: ['weather', 'jobs', 'orders', 'bills', 'trips'], clear_needs: true });
     if (u.includes('remind me to pay')) return call('action_button_create', { title: 'Pay the electricity bill', prompt: 'Pay my electricity bill' });
     if (u.includes('already paid')) return call('action_button_update', {});
     if (u.includes('panel bigger')) return call('panel_list', {});
@@ -119,6 +139,19 @@ function decide(body: any, port: number): Out {
 
   // Background jobs.
   if (/You read emails for Errand/.test(sys)) return text(JSON.stringify({ items: classifyMail(lastText) }));
+  // Skimming envelopes: keep everything except obvious promotions.
+  if (/You skim email for Errand/.test(sys))
+    return text(
+      JSON.stringify({
+        keep: lastText
+          .split('\n')
+          .map((l) => ({ n: Number(l.match(/^\[(\d+)\]/)?.[1]), promo: /sale|% off/i.test(l) }))
+          .filter((x) => Number.isInteger(x.n) && !x.promo)
+          .map((x) => ({ n: x.n, why: 'other' })),
+      }),
+    );
+  // One-time clean-ups of what older versions saved: nothing to drop in a fresh test.
+  if (/tracker saved from email|tracker read from payment emails/.test(sys)) return text('{"drop":[]}');
   if (tools.includes('fetch_url')) return text('{"value": 42, "label": "Answer"}');
   if (/title for a conversation/i.test(lastText)) return text('Test chat');
   if (/long-term memory/i.test(sys)) return text('{"add":[],"update":[],"remove":[]}');
