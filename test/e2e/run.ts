@@ -387,6 +387,24 @@ try {
   );
   const again = (await api('/trackers/scan', {})).data;
   check('the same emails are never handled twice', again.looked === 0, JSON.stringify(again));
+  for (const subject of [
+    'Linear: online assessment',
+    'Vercel: online assessment',
+    'Figma: online assessment',
+    'Stripe: interview invitation',
+    'Notion: your trial ends Friday',
+    'Ikea: your order was delivered',
+    'Vistara: web check-in is open',
+  ])
+    mail.append(email({ from: `${subject.split(':')[0]} <hello@example.com>`, subject, body: subject, at: Date.now() }));
+  await api('/trackers/scan', {});
+  const notes = ((await api(`/conversations/${main}`)).data.messages as any[]).map((m) => allText([m]));
+  const note = notes.findLast((n) => /Noticed in your email/.test(n)) ?? '';
+  check(
+    'many changes make a short note, not a wall',
+    /Stripe moved your application to \*\*Interview\*\*/.test(note) && !/Assessment/.test(note) && /Plus 1 smaller update/.test(note),
+    note,
+  );
 
   // ── Use on your phone ───────────────────────────────────────────────────
   const phone = (await api('/phone', { enabled: true })).data;

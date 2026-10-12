@@ -2,6 +2,11 @@
 
 Every change that matters to people using Errand. To update, ask Errand “is there an update?” or use **Settings → About → Update now**; your data stays.
 
+## Unreleased
+
+- **Short email notes.** When a check finds many changes at once, similar ones share a line (“4 applications moved to Assessment: Linear, Vercel, Figma and 1 more”), the AI picks the few worth saying first, and the rest wait on your Home screen. To-dos that didn’t make it into Needs you aren’t announced either.
+- A finished browser task always shows its final screen, even when it took a moment to save.
+
 ## 1.0.3 · 2026-10-12
 
 - **A short “Needs you”.** When more than six things are waiting, the AI keeps the six that matter most (deadlines, money, travel, real interviews) and quietly drops platform nudges, routine security emails, duplicates and likely scams. To-dos are now only real obligations someone is waiting on.

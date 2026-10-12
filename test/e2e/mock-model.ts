@@ -42,6 +42,11 @@ function classifyMail(prompt: string) {
       return item({ kind: 'job', status: 'emailed', name: to.charAt(0).toUpperCase() + to.slice(1), title: 'Software Developer', note: `You emailed ${to}.` });
     if (/applying to (\w+)/.test(subject))
       return item({ kind: 'job', status: 'received', name: subject.match(/applying to (\w+)/)![1], title: 'Product Engineer' });
+    if (/assessment/i.test(subject)) return item({ kind: 'job', status: 'assessment', name: subject.split(':')[0], title: 'Engineer' });
+    if (/trial ends/i.test(subject)) return item({ kind: 'bill', status: 'trial_ending', name: subject.split(':')[0], date });
+    if (/order was delivered/i.test(subject)) return item({ kind: 'order', status: 'delivered', name: subject.split(':')[0], title: 'Desk lamp', ref: 'D-1' });
+    if (/check-in is open/i.test(subject))
+      return item({ kind: 'travel', status: 'check_in', name: subject.split(':')[0], title: 'UK 811 Delhi → Pune', ref: 'XYZ789' });
     if (/interview/i.test(subject))
       return item({ kind: 'job', status: 'interview', name: subject.split(':')[0], date: new Date(Date.now() + 86400_000).toISOString() });
     if (/order .*shipped/i.test(subject)) return item({ kind: 'order', status: 'shipped', name: 'Amazon', title: 'Wireless earbuds', ref: '407-1234567' });
@@ -159,6 +164,16 @@ function decide(body: any, port: number): Out {
           .map((l, n) => ({ l, n }))
           .filter((x) => !/test mug/i.test(x.l))
           .map((x) => x.n),
+      }),
+    );
+  // Many changes at once: like a real model, keep the ones that matter and leave routine progress out.
+  if (/changes a personal assistant noticed/.test(sys))
+    return text(
+      JSON.stringify({
+        keep: lastText
+          .split('\n')
+          .filter((l) => !/Assessment/.test(l))
+          .map((l) => Number(l.match(/^\[(\d+)\]/)?.[1])),
       }),
     );
   // One-time clean-ups of what older versions saved: nothing to drop in a fresh test.
