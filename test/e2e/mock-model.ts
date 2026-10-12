@@ -24,6 +24,15 @@ const FORM = `<!doctype html><html><head><title>Apply</title></head><body style=
 <textarea id=t aria-label="Cover letter" style="position:fixed;left:0;top:50%;width:100%;height:45%" oninput="document.getElementById('o2').textContent='Typed: '+this.value"></textarea>
 </body></html>`;
 
+// A job board whose Apply opens a new tab, and an employer page whose Apply opens yet another.
+const TAB = (title: string, link: string, next: string) =>
+  `<!doctype html><html><head><title>${title}</title></head><body><h1>${title}</h1>${link ? `<a href="${next}" target="_blank">${link}</a>` : ''}</body></html>`;
+const TABS: Record<string, string> = {
+  '/tabs/search': TAB('Search results', 'Apply on the job board', '/tabs/board'),
+  '/tabs/board': TAB('Job board', 'Open the employer portal', '/tabs/portal'),
+  '/tabs/portal': TAB('Employer portal', '', ''),
+};
+
 /** What a model would pull out of the e2e inbox, keyed by each email's id. */
 function classifyMail(prompt: string) {
   return prompt.split(/\n\n(?=\[)/).map((block) => {
@@ -75,6 +84,12 @@ function decide(body: any, port: number): Out {
       if (!/handed it back/.test(lastText)) return call('wait', { seconds: 1 });
       const found = [lastText.match(/File: \S+/)?.[0], lastText.match(/Typed: \w+/)?.[0]].filter(Boolean).join(', ');
       return call('done', { success: true, result: found || 'nothing on the page' });
+    }
+    if (/TASK:.*TABS/.test(sys)) {
+      if (n === 0) return call('navigate', { url: `http://localhost:${port}/tabs/search` });
+      if (n === 1) return call('click', { id: el(/Apply on the job board/) });
+      if (n === 2) return call('click', { id: el(/Open the employer portal/) });
+      return call('done', { success: true, result: lastText.match(/Employer portal|Job board|Search results/)?.[0] ?? 'nowhere' });
     }
     if (/TASK:.*OTP/.test(sys)) {
       if (n === 0) return call('navigate', { url: `http://localhost:${port}/shop` });
@@ -242,6 +257,7 @@ function respond(res: http.ServerResponse, body: any, out: Out) {
 export function startMockModel(port: number): Promise<http.Server> {
   const server = http.createServer((req, res) => {
     if (req.url === '/shop') return void res.writeHead(200, { 'content-type': 'text/html' }).end(SHOP);
+    if (req.url && TABS[req.url]) return void res.writeHead(200, { 'content-type': 'text/html' }).end(TABS[req.url]);
     if (req.url === '/form') return void res.writeHead(200, { 'content-type': 'text/html' }).end(FORM);
     if (req.url?.endsWith('/models'))
       return void res

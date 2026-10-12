@@ -238,6 +238,12 @@ try {
     for (let i = 0; i < 20 && !frame; i++) (await sleep(250), (frame = (await api(`/handoffs/${task}`)).data.frame));
     check('the final screen is kept', typeof frame === 'string' && frame.length > 1000);
 
+    // ── Links that open new tabs, from a tab that was itself opened as one ──
+    const tabsTask = (await api('/handoffs', { goal: 'TABS test: follow the apply links' })).data.id as string;
+    let tabsDone: any = null;
+    for (let i = 0; i < 80 && !['done', 'failed'].includes(tabsDone?.status); i++) (await sleep(250), (tabsDone = (await api(`/handoffs/${tabsTask}`)).data));
+    check('a new tab opened from a new tab is followed', tabsDone?.result === 'Employer portal', tabsDone?.result);
+
     // ── Sign in to a site: the page opens with you in control ──────────────
     const signIn = (await api('/handoffs/sign-in', { url: `http://localhost:${MODEL_PORT}/shop` })).data.id as string;
     let opened: any = null;
@@ -405,6 +411,21 @@ try {
     /Stripe moved your application to \*\*Interview\*\*/.test(note) && !/Assessment/.test(note) && /Plus 1 smaller update/.test(note),
     note,
   );
+
+  // ── Deleting from Today ─────────────────────────────────────────────────
+  const oneJob = (await trackers()).jobs.items.find((x: any) => x.title === 'Linear');
+  await fetch(`${BASE}/api/trackers/items/${oneJob.id}`, { method: 'PATCH', headers, body: JSON.stringify({ hidden: true }) });
+  check('one tracked item can be removed', !(await trackers()).jobs.items.some((x: any) => x.title === 'Linear'));
+  const gone = await (await fetch(`${BASE}/api/trackers/trips`, { method: 'DELETE', headers })).json();
+  const openButtons = ((await api('/actions')).data as any[]).map((a) => a.title);
+  check(
+    'a whole tracker can be deleted, with its buttons',
+    gone.deleted >= 2 && !(await trackers()).trips.total && !openButtons.some((b) => /^Check in for|^Book a place to stay/.test(b)),
+    `${JSON.stringify(gone)} ${openButtons.join('; ')}`,
+  );
+  mail.append(email({ from: 'IndiGo <bookings@goindigo.in>', subject: 'Your IndiGo booking is confirmed', body: 'PNR ABC999', at: Date.now() }));
+  await api('/trackers/scan', {});
+  check('a deleted tracker stays deleted when new email arrives', !(await trackers()).trips.total);
 
   // ── Use on your phone ───────────────────────────────────────────────────
   const phone = (await api('/phone', { enabled: true })).data;

@@ -251,6 +251,8 @@ export async function runHandoff(opts: {
   const files: StoredFile[] = [];
   const secrets = new Set<string>();
   let page: Page | null = null;
+  const tabs: Page[] = [];
+  let finished = false;
   let release: (() => void) | null = null;
   let approvedAt = -10;
   const vaultAllowed = new Set<string>();
@@ -266,37 +268,51 @@ export async function runHandoff(opts: {
     release = await acquireSlot(signal);
     setStatus(hid, 'running');
     const ctx = await getContext();
+    // Every tab the task opens gets the same handling, however deep: a job board's "Apply" opening
+    // the employer's portal in another new tab is followed too.
+    const wire = (tab: Page) => {
+      tabs.push(tab);
+      tab.on('popup', (next) => {
+        wire(next);
+        page = next;
+        void live.attach(hid, next);
+      });
+      // A tab that closes itself (a sign-in popup, say) hands back to the one before it.
+      tab.on('close', () => {
+        tabs.splice(tabs.indexOf(tab), 1);
+        if (page === tab && tabs.length && !finished) {
+          page = tabs.at(-1)!;
+          void live.attach(hid, page);
+        }
+      });
+      // Keep anything the site downloads (return labels, invoices, tickets) for the user.
+      tab.on('download', async (d) => {
+        try {
+          const tmp = await d.path();
+          if (!tmp) return;
+          const file = storeFile(d.suggestedFilename(), fs.readFileSync(tmp));
+          files.push(file);
+          record('download', file.name);
+        } catch {
+          /* download cancelled */
+        }
+      });
+      tab.on('dialog', async (d) => {
+        if (d.type() === 'confirm') {
+          const ok = await requestApproval(
+            { title: 'Website asks to confirm', detail: d.message(), handoffId: hid, conversationId: opts.conversationId },
+            signal,
+          ).catch(() => false);
+          record('dialog', `${d.message()} → ${ok ? 'confirmed' : 'dismissed'}`);
+          await (ok ? d.accept() : d.dismiss()).catch(() => {});
+        } else {
+          record('dialog', d.message());
+          await d.accept().catch(() => {});
+        }
+      });
+    };
     page = await ctx.newPage();
-    // Follow new tabs this task opens (e.g. "opens in new window" links).
-    page.on('popup', (p) => {
-      page = p;
-      void live.attach(hid, p);
-    });
-    // Keep anything the site downloads (return labels, invoices, tickets) for the user.
-    page.on('download', async (d) => {
-      try {
-        const tmp = await d.path();
-        if (!tmp) return;
-        const file = storeFile(d.suggestedFilename(), fs.readFileSync(tmp));
-        files.push(file);
-        record('download', file.name);
-      } catch {
-        /* download cancelled */
-      }
-    });
-    page.on('dialog', async (d) => {
-      if (d.type() === 'confirm') {
-        const ok = await requestApproval(
-          { title: 'Website asks to confirm', detail: d.message(), handoffId: hid, conversationId: opts.conversationId },
-          signal,
-        ).catch(() => false);
-        record('dialog', `${d.message()} → ${ok ? 'confirmed' : 'dismissed'}`);
-        await (ok ? d.accept() : d.dismiss()).catch(() => {});
-      } else {
-        record('dialog', d.message());
-        await d.accept().catch(() => {});
-      }
-    });
+    wire(page);
     await live.attach(hid, page);
     await page.goto(opts.startUrl || 'about:blank', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
 
@@ -599,9 +615,10 @@ export async function runHandoff(opts: {
     state.control?.release();
     running.delete(hid);
     release?.();
-    // Keep the tab around briefly so the final frame is visible, then close it.
-    const p = page;
-    setTimeout(() => p?.close().catch(() => {}), 15000);
+    // Keep the tabs around briefly so the final frame is visible, then close them all.
+    finished = true;
+    const open = [...tabs];
+    setTimeout(() => open.forEach((t) => void t.close().catch(() => {})), 15000);
   }
 }
 
