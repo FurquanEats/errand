@@ -72,15 +72,18 @@ function useHandoff(id: string) {
     else if (e.type === 'handoff.status') {
       const done = !ACTIVE.includes(e.status);
       setH((cur) => (cur ? { ...cur, status: e.status, result: e.result ?? cur.result, live: !done, control: done ? false : cur.control } : cur));
-      // The final screen is saved when a task ends.
-      if (done)
-        setTimeout(
-          () =>
-            api<HandoffData>(`/handoffs/${id}`)
-              .then((d) => setH((cur) => (cur ? { ...cur, frame: d.frame } : d)))
-              .catch(() => {}),
-          600,
-        );
+      // The final screen is saved just after a task ends: look again until it's there.
+      if (done) {
+        const fetchFrame = (tries: number) =>
+          setTimeout(
+            () =>
+              api<HandoffData>(`/handoffs/${id}`)
+                .then((d) => (d.frame ? setH((cur) => (cur ? { ...cur, frame: d.frame } : d)) : tries > 1 && fetchFrame(tries - 1)))
+                .catch(() => {}),
+            700,
+          );
+        fetchFrame(6);
+      }
     }
   });
   return h;

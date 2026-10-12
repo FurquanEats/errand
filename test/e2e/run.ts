@@ -233,7 +233,10 @@ try {
     }
     check('what you typed while in control reaches the page', /Typed: hello/.test(finished?.result ?? ''), finished?.result);
     check('the agent carries on after you hand back', finished?.status === 'done' && /File: cv\.pdf/.test(finished?.result ?? ''));
-    check('the final screen is kept', typeof finished?.frame === 'string' && finished.frame.length > 1000);
+    // Saved just after the task ends, so give it a moment on a slow machine.
+    let frame = finished?.frame;
+    for (let i = 0; i < 20 && !frame; i++) (await sleep(250), (frame = (await api(`/handoffs/${task}`)).data.frame));
+    check('the final screen is kept', typeof frame === 'string' && frame.length > 1000);
 
     // ── Sign in to a site: the page opens with you in control ──────────────
     const signIn = (await api('/handoffs/sign-in', { url: `http://localhost:${MODEL_PORT}/shop` })).data.id as string;
