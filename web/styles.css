@@ -2265,15 +2265,31 @@ a.list-item:hover,
   flex-direction: column;
   width: min(calc(100vw - 32px), calc((100vh - 32px - var(--chrome)) * var(--ar, 1.6)));
   width: min(calc(100dvw - 32px), calc((100dvh - 32px - var(--chrome)) * var(--ar, 1.6)));
-  box-shadow:
-    0 0 0 100vmax rgba(26, 22, 16, 0.45),
-    var(--pop);
+  box-shadow: var(--pop);
+}
+.screen-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 69;
+  background: rgba(26, 22, 16, 0.55);
+  animation: fade 160ms var(--ease) both;
+}
+/* Where the browser column slides over the page, it would otherwise hold the big view inside its
+   own layer (under the dimming) and its slide transform; lift it out while the view is big. */
+.task-col:has(.screen.big) {
+  z-index: 75;
+  transform: none;
+  transition: none;
+}
+.task-scroll:has(.screen.big) {
+  overflow: visible;
+}
+.shell:has(.screen.big) .scrim {
+  display: none;
 }
 .screen.big.control {
   --chrome: 84px; /* plus the "You're in control" bar */
-  box-shadow:
-    0 0 0 100vmax rgba(26, 22, 16, 0.45),
-    0 0 0 3px var(--signal-soft);
+  box-shadow: 0 0 0 3px var(--signal-soft);
 }
 .screen.big .screen-view {
   flex: none;
@@ -2987,10 +3003,17 @@ a.list-item:hover,
   font-size: 12.5px;
 }
 
-/* Column edges you can drag */
-.side,
-.task-col {
-  position: relative;
+/* Column edges you can drag. Only where the columns sit side by side: on smaller screens they
+   slide over the page (position: fixed), which already holds the drag handle in place. */
+@media (min-width: 761px) {
+  .side {
+    position: relative;
+  }
+}
+@media (min-width: 1101px) {
+  .task-col {
+    position: relative;
+  }
 }
 .resizer {
   position: absolute;

@@ -2,6 +2,12 @@
 
 Every change that matters to people using Errand. To update, ask Errand “is there an update?” or use **Settings → About → Update now**; your data stays.
 
+## Unreleased
+
+- **On smaller screens the browser slides over the conversation again**, instead of dropping under the Today column (broken since 1.0.1 by the column resizing).
+- **The bigger browser view dims everything behind it** at every window size, and a click outside makes it small again.
+- Screen readers name the approval sheet and the “working” dots.
+
 ## 1.0.5 · 2026-10-12
 
 - **The bigger browser view keeps the page’s shape.** Full screen, the agent’s page is shown as large as your window allows in its own 16:10 shape, at any zoom or window size, instead of stretching with empty bars. The agent always works on the same 1280×800 page, remote browsers too.

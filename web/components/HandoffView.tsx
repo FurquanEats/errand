@@ -183,119 +183,123 @@ function Screen({ id, live, control, still, url }: { id: string; live: boolean; 
   const shownUrl = frame?.url ?? url;
   // The agent's page always keeps its own shape; only how big it's drawn follows your window.
   return (
-    <div className={`screen${control ? ' control' : ''}${big ? ' big' : ''}`} style={{ '--ar': ratio.current } as CSSProperties}>
-      <div className="screen-bar">
-        {live && image && !control && (
-          <span className="live-tag">
-            <span className="live-dot pulse" /> Live
+    <>
+      {/* Behind the big view: dims the rest of Errand; a click outside makes the view small again. */}
+      {big && <div className="screen-backdrop" onClick={() => !control && setBig(false)} aria-hidden="true" />}
+      <div className={`screen${control ? ' control' : ''}${big ? ' big' : ''}`} style={{ '--ar': ratio.current } as CSSProperties}>
+        <div className="screen-bar">
+          {live && image && !control && (
+            <span className="live-tag">
+              <span className="live-dot pulse" /> Live
+            </span>
+          )}
+          <span className="url" title={shownUrl}>
+            <Icon name="lock" size={11} />
+            <span>{urlLabel(shownUrl)}</span>
           </span>
-        )}
-        <span className="url" title={shownUrl}>
-          <Icon name="lock" size={11} />
-          <span>{urlLabel(shownUrl)}</span>
-        </span>
-        {shownUrl && /^https?:\/\//.test(shownUrl) && (
-          <a
+          {shownUrl && /^https?:\/\//.test(shownUrl) && (
+            <a
+              className="icon-btn sm"
+              href={shownUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open this page in your own browser"
+              title="Open in your browser"
+            >
+              <Icon name="external" size={14} />
+            </a>
+          )}
+          <button
             className="icon-btn sm"
-            href={shownUrl}
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Open this page in your own browser"
-            title="Open in your browser"
+            onClick={() => setBig(!big)}
+            aria-label={big ? 'Make the screen smaller' : 'Make the screen bigger'}
+            title={big ? 'Smaller (Esc)' : 'Bigger'}
+            aria-pressed={big}
           >
-            <Icon name="external" size={14} />
-          </a>
-        )}
-        <button
-          className="icon-btn sm"
-          onClick={() => setBig(!big)}
-          aria-label={big ? 'Make the screen smaller' : 'Make the screen bigger'}
-          title={big ? 'Smaller (Esc)' : 'Bigger'}
-          aria-pressed={big}
-        >
-          <Icon name={big ? 'shrink' : 'expand'} size={14} />
-        </button>
-      </div>
-      <div
-        ref={view}
-        className="screen-view"
-        style={{ aspectRatio: aspect }}
-        tabIndex={control ? 0 : -1}
-        role={control ? 'application' : undefined}
-        aria-label={control ? 'The task’s browser. You are in control: click, scroll and type here.' : undefined}
-        onContextMenu={(e) => control && e.preventDefault()}
-        onPointerDown={(e) => {
-          if (!control) return;
-          view.current?.focus();
-          e.currentTarget.setPointerCapture(e.pointerId);
-          const p = at(e.clientX, e.clientY);
-          if (e.pointerType === 'mouse') send({ type: 'down', ...p, button: BUTTONS[e.button] ?? 'left', count: e.detail || 1 });
-          else touch.current = { x: e.clientX, y: e.clientY, moved: false };
-        }}
-        onPointerMove={(e) => {
-          if (!control) return;
-          const p = at(e.clientX, e.clientY);
-          const t = touch.current;
-          if (e.pointerType === 'mouse') return send({ type: 'move', ...p }, true);
-          if (!t) return;
-          // A finger drag scrolls the page, like it would on the site itself.
-          const dy = t.y - e.clientY;
-          const dx = t.x - e.clientX;
-          if (Math.abs(dy) + Math.abs(dx) < 6 && !t.moved) return;
-          t.moved = true;
-          t.x = e.clientX;
-          t.y = e.clientY;
-          send({ type: 'wheel', ...p, dx: dx * 2, dy: dy * 2 }, true);
-        }}
-        onPointerUp={(e) => {
-          if (!control) return;
-          const p = at(e.clientX, e.clientY);
-          if (e.pointerType === 'mouse') send({ type: 'up', ...p, button: BUTTONS[e.button] ?? 'left', count: e.detail || 1 });
-          else if (touch.current && !touch.current.moved) send({ type: 'click', ...p });
-          touch.current = null;
-        }}
-        onKeyDown={(e) => {
-          if (!control || e.nativeEvent.isComposing) return;
-          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') return; // the paste event sends the text
-          e.preventDefault();
-          if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) send({ type: 'text', text: e.key });
-          else if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key))
-            send({ type: 'key', key: e.key, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey });
-        }}
-        onPaste={(e) => {
-          if (!control) return;
-          e.preventDefault();
-          const text = e.clipboardData.getData('text');
-          if (text) send({ type: 'text', text });
-        }}
-      >
-        {image ? (
-          <img src={`data:image/jpeg;base64,${image}`} alt={control ? '' : 'The browser agent’s screen'} draggable={false} />
-        ) : (
-          <span>{live ? 'Opening the browser…' : 'No screen captured'}</span>
-        )}
-      </div>
-      {control && (
-        <form
-          className="control-bar"
-          onSubmit={(e) => {
+            <Icon name={big ? 'shrink' : 'expand'} size={14} />
+          </button>
+        </div>
+        <div
+          ref={view}
+          className="screen-view"
+          style={{ aspectRatio: aspect }}
+          tabIndex={control ? 0 : -1}
+          role={control ? 'application' : undefined}
+          aria-label={control ? 'The task’s browser. You are in control: click, scroll and type here.' : undefined}
+          onContextMenu={(e) => control && e.preventDefault()}
+          onPointerDown={(e) => {
+            if (!control) return;
+            view.current?.focus();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            const p = at(e.clientX, e.clientY);
+            if (e.pointerType === 'mouse') send({ type: 'down', ...p, button: BUTTONS[e.button] ?? 'left', count: e.detail || 1 });
+            else touch.current = { x: e.clientX, y: e.clientY, moved: false };
+          }}
+          onPointerMove={(e) => {
+            if (!control) return;
+            const p = at(e.clientX, e.clientY);
+            const t = touch.current;
+            if (e.pointerType === 'mouse') return send({ type: 'move', ...p }, true);
+            if (!t) return;
+            // A finger drag scrolls the page, like it would on the site itself.
+            const dy = t.y - e.clientY;
+            const dx = t.x - e.clientX;
+            if (Math.abs(dy) + Math.abs(dx) < 6 && !t.moved) return;
+            t.moved = true;
+            t.x = e.clientX;
+            t.y = e.clientY;
+            send({ type: 'wheel', ...p, dx: dx * 2, dy: dy * 2 }, true);
+          }}
+          onPointerUp={(e) => {
+            if (!control) return;
+            const p = at(e.clientX, e.clientY);
+            if (e.pointerType === 'mouse') send({ type: 'up', ...p, button: BUTTONS[e.button] ?? 'left', count: e.detail || 1 });
+            else if (touch.current && !touch.current.moved) send({ type: 'click', ...p });
+            touch.current = null;
+          }}
+          onKeyDown={(e) => {
+            if (!control || e.nativeEvent.isComposing) return;
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') return; // the paste event sends the text
             e.preventDefault();
-            if (typed) send({ type: 'text', text: typed });
-            send({ type: 'key', key: 'Enter' });
-            setTyped('');
+            if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) send({ type: 'text', text: e.key });
+            else if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key))
+              send({ type: 'key', key: e.key, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey });
+          }}
+          onPaste={(e) => {
+            if (!control) return;
+            e.preventDefault();
+            const text = e.clipboardData.getData('text');
+            if (text) send({ type: 'text', text });
           }}
         >
-          <span>You’re in control</span>
-          <input
-            className="input"
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            placeholder="Type into the page, Enter to send"
-            aria-label="Type into the page"
-          />
-        </form>
-      )}
-    </div>
+          {image ? (
+            <img src={`data:image/jpeg;base64,${image}`} alt={control ? '' : 'The browser agent’s screen'} draggable={false} />
+          ) : (
+            <span>{live ? 'Opening the browser…' : 'No screen captured'}</span>
+          )}
+        </div>
+        {control && (
+          <form
+            className="control-bar"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (typed) send({ type: 'text', text: typed });
+              send({ type: 'key', key: 'Enter' });
+              setTyped('');
+            }}
+          >
+            <span>You’re in control</span>
+            <input
+              className="input"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder="Type into the page, Enter to send"
+              aria-label="Type into the page"
+            />
+          </form>
+        )}
+      </div>
+    </>
   );
 }
 

@@ -391,7 +391,7 @@ export function Chat({ id, main }: { id: string; main?: boolean }) {
                   <Markdown text={live.text} />
                 </div>
               ) : (
-                <span className="read-dots working" aria-label="Working">
+                <span className="read-dots working" role="status" aria-label="Working">
                   <i />
                   <i />
                   <i />

@@ -205,7 +205,7 @@ export function PendingTray({ route }: { route: string }) {
 
   return (
     <div className="overlay">
-      <div className="modal" role="dialog" aria-modal="true">
+      <div className="modal" role="dialog" aria-modal="true" aria-label={p.title || kindLabel(p)}>
         <div className="badge">{kindLabel(p)}</div>
         <RequestText p={p} title="h2" />
         {p.handoffId && (
