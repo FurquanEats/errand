@@ -1,4 +1,5 @@
 import type { CDPSession, Page } from 'playwright-core';
+import { AGENT_VIEWPORT } from './browser.ts';
 
 /**
  * The live view of a browser task: a screencast of its tab that runs only while someone is
@@ -99,7 +100,7 @@ async function still(s: Session) {
   const page = s.page;
   if (!page || page.isClosed()) return;
   const buf = await page.screenshot({ type: 'jpeg', quality: 70, timeout: 3000 }).catch(() => null);
-  const size = page.viewportSize() ?? { width: 1280, height: 800 };
+  const size = page.viewportSize() ?? AGENT_VIEWPORT;
   if (buf) deliver(s, { image: buf.toString('base64'), url: page.url(), width: size.width, height: size.height });
 }
 
@@ -152,7 +153,7 @@ const KEYS: Record<string, string> = { ' ': 'Space', Esc: 'Escape', Del: 'Delete
 export async function input(id: string, e: InputEvent) {
   const page = sessions.get(id)?.page;
   if (!page || page.isClosed()) throw new Error('This task’s browser is closed');
-  const size = page.viewportSize() ?? { width: 1280, height: 800 };
+  const size = page.viewportSize() ?? AGENT_VIEWPORT;
   const at = (x: number, y: number) => [Math.max(0, Math.min(1, x)) * size.width, Math.max(0, Math.min(1, y)) * size.height] as const;
   switch (e.type) {
     case 'click':

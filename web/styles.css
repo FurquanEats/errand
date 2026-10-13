@@ -2210,21 +2210,31 @@ a.list-item:hover,
   font-weight: 600;
   flex: none;
 }
-/* Bigger: the screen over everything, as large as the window allows. */
+/* Bigger: the screen over everything, as large as the window allows, in the page's own shape. */
 .screen.big {
+  --chrome: 36px; /* the bar above the page */
   position: fixed;
-  inset: 16px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   z-index: 70;
   display: flex;
   flex-direction: column;
+  width: min(calc(100vw - 32px), calc((100vh - 32px - var(--chrome)) * var(--ar, 1.6)));
+  width: min(calc(100dvw - 32px), calc((100dvh - 32px - var(--chrome)) * var(--ar, 1.6)));
   box-shadow:
     0 0 0 100vmax rgba(26, 22, 16, 0.45),
     var(--pop);
 }
+.screen.big.control {
+  --chrome: 84px; /* plus the "You're in control" bar */
+  box-shadow:
+    0 0 0 100vmax rgba(26, 22, 16, 0.45),
+    0 0 0 3px var(--signal-soft);
+}
 .screen.big .screen-view {
-  flex: 1;
-  min-height: 0;
-  aspect-ratio: auto !important;
+  flex: none;
+  aspect-ratio: var(--ar, 1.6) !important;
 }
 .screen.big .screen-view img {
   object-fit: contain;

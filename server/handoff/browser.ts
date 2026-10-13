@@ -9,6 +9,9 @@ import { isOwnOrigin } from '../security.ts';
  * (by watching the agent, or with "Show browser window" on) stays logged in.
  */
 
+/** The page size the agent sees and works best at. Your view of it scales; this never changes. */
+export const AGENT_VIEWPORT = { width: 1280, height: 800 };
+
 let ctx: BrowserContext | null = null;
 let launching: Promise<BrowserContext> | null = null;
 let launchedHeadless: boolean | null = null;
@@ -24,7 +27,7 @@ export async function getContext(): Promise<BrowserContext> {
     if (s.browserChannel === 'remote') return connectRemote(s.cdpUrl);
     const opts: Parameters<typeof chromium.launchPersistentContext>[1] = {
       headless: s.headless,
-      viewport: { width: 1280, height: 800 },
+      viewport: AGENT_VIEWPORT,
       locale: 'en-US',
       timezoneId: getSettings().timezone || undefined,
       args: ['--disable-blink-features=AutomationControlled', ...s.extraArgs],
@@ -64,7 +67,7 @@ async function connectRemote(cdpUrl: string): Promise<BrowserContext> {
   if (!cdpUrl) throw new Error('Remote browser selected but no CDP URL is set (Settings → Handoff).');
   try {
     const browser = await chromium.connectOverCDP(cdpUrl, { timeout: 30000 });
-    const c = browser.contexts()[0] ?? (await browser.newContext({ viewport: { width: 1280, height: 800 } }));
+    const c = browser.contexts()[0] ?? (await browser.newContext({ viewport: AGENT_VIEWPORT }));
     browser.on('disconnected', () => {
       ctx = null;
     });

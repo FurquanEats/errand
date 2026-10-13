@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { api, useEvents } from '../api';
 import { useApp } from '../context';
 import { Icon } from './Icon';
@@ -181,8 +181,9 @@ function Screen({ id, live, control, still, url }: { id: string; live: boolean; 
   const image = frame?.image ?? still;
   const aspect = frame ? `${frame.width} / ${frame.height}` : undefined;
   const shownUrl = frame?.url ?? url;
+  // The agent's page always keeps its own shape; only how big it's drawn follows your window.
   return (
-    <div className={`screen${control ? ' control' : ''}${big ? ' big' : ''}`}>
+    <div className={`screen${control ? ' control' : ''}${big ? ' big' : ''}`} style={{ '--ar': ratio.current } as CSSProperties}>
       <div className="screen-bar">
         {live && image && !control && (
           <span className="live-tag">

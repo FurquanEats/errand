@@ -15,7 +15,7 @@ import { UNTRUSTED_CONTENT_RULE, isOwnOrigin } from '../security.ts';
 import { askForCode, askUnlock, askUser, isPending, listPending, requestApproval, resolvePending } from '../approvals.ts';
 import { notify } from '../notify.ts';
 import { listStoredFiles, readStoredFile, storeFile, type StoredFile } from '../documents.ts';
-import { acquireSlot, getContext } from './browser.ts';
+import { acquireSlot, AGENT_VIEWPORT, getContext } from './browser.ts';
 import * as live from './live.ts';
 import { DRAW_LABELS, MASK_SECRETS, PAGE_TEXT, REMOVE_LABELS, SETTLE, indexElements, type PageElement } from './dom.ts';
 
@@ -272,6 +272,8 @@ export async function runHandoff(opts: {
     // the employer's portal in another new tab is followed too.
     const wire = (tab: Page) => {
       tabs.push(tab);
+      // A remote browser's own tabs take its window's size: give them the agent's page size too.
+      if (!tab.viewportSize()) void tab.setViewportSize(AGENT_VIEWPORT).catch(() => {});
       tab.on('popup', (next) => {
         wire(next);
         page = next;
