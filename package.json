@@ -1,6 +1,6 @@
 {
   "name": "errand",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "The free, open-source Hark: a personal AI agent that notices what needs doing in your email and does it. One chat that works real websites for you, keeps trackers up to date, remembers you, and plans ahead. Bring your own AI: your ChatGPT plan, OpenRouter, any API key, or a local model.",
   "license": "MIT",
   "author": "Mohammed Furquan, Zovle (https://zovle.in)",

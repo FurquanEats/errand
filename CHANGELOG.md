@@ -2,6 +2,11 @@
 
 Every change that matters to people using Errand. To update, ask Errand “is there an update?” or use **Settings → About → Update now**; your data stays.
 
+## 1.0.5 · 2026-10-12
+
+- **The bigger browser view keeps the page’s shape.** Full screen, the agent’s page is shown as large as your window allows in its own 16:10 shape, at any zoom or window size, instead of stretching with empty bars. The agent always works on the same 1280×800 page, remote browsers too.
+- **Clearer questions from the browser agent.** The question is the card’s heading, and what it’s based on sits underneath, one fact per line, instead of one long paragraph. Long steps in a task’s list fold to three lines.
+
 ## 1.0.4 · 2026-10-12
 
 - **Short email notes.** When a check finds many changes at once, similar ones share a line (“4 applications moved to Assessment: Linear, Vercel, Figma and 1 more”), the AI picks the few worth saying first, and the rest wait on your Home screen. To-dos that didn’t make it into Needs you aren’t announced either.
