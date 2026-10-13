@@ -358,7 +358,9 @@ export function HandoffView({ id, visible = true }: { id: string; visible?: bool
             <li key={s.n} className={i === steps.length - 1 && active ? 'now' : ''}>
               <span className="n">{s.n}</span>
               <span className="d">
-                {s.detail}
+                <span className="t" title={s.detail.length > 160 ? s.detail : undefined}>
+                  {s.detail}
+                </span>
                 {s.url && urlLabel(s.url) !== urlLabel(steps[i - 1]?.url) && <span className="u">{urlLabel(s.url)}</span>}
               </span>
             </li>

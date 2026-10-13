@@ -29,6 +29,56 @@ const KIND: Record<Pending['kind'], string> = {
   unlock: 'Vault',
   question: 'Question',
 };
+const kindLabel = (p: Pending) => (p.kind === 'question' && p.handoffId ? 'The browser agent asks' : KIND[p.kind]);
+
+/**
+ * A request's words, laid out to be read at a glance: the question up top, and what it's based
+ * on underneath, one fact per line. Older questions arrive as one long paragraph, so the
+ * question is pulled off its end and the rest is broken into sentences.
+ */
+function shape(p: Pending) {
+  let ask = p.title;
+  let rest = p.detail.trim();
+  if (p.kind === 'question' && rest && !rest.includes('\n')) {
+    const sentences = rest
+      .match(/[^.?!]+(?:[.?!]+(?=\s|$)|$)/g)
+      ?.map((x) => x.trim())
+      .filter(Boolean) ?? [rest];
+    const q = sentences.findIndex((x, i) => x.endsWith('?') && sentences.slice(i).every((y) => y.endsWith('?')));
+    if (q >= 0) {
+      ask = sentences.slice(q).join(' ');
+      rest = sentences.slice(0, q).join('\n');
+    } else if (sentences.length > 2) rest = sentences.join('\n');
+  }
+  const lines = rest
+    .split('\n')
+    .map((l) => l.trim().replace(/^[-•*]\s+/, ''))
+    .filter(Boolean)
+    .map((l) => {
+      const m = l.match(/^([^:]{2,28}):\s+(.+)$/);
+      return m ? { label: m[1], text: m[2] } : { text: l };
+    });
+  return { ask, lines };
+}
+
+function RequestText({ p, title: Title = 'div' }: { p: Pending; title?: 'div' | 'h2' }) {
+  const { ask, lines } = shape(p);
+  return (
+    <>
+      <Title className="title">{ask}</Title>
+      {lines.length > 0 && (
+        <ul className="detail-lines">
+          {lines.map((l, i) => (
+            <li key={i}>
+              {l.label && <span className="label">{l.label}</span>}
+              <span>{l.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
 
 const placeholderFor = (p: Pending) => (p.kind === 'code' ? '••••••' : p.kind === 'unlock' ? 'Vault passphrase' : 'Your answer');
 
@@ -65,9 +115,8 @@ function InlineRequest({ p, onDone }: { p: Pending; onDone: () => void }) {
 
   return (
     <div className="ask-card rise" role="group" aria-label={p.title}>
-      <div className="kind">{KIND[p.kind]}</div>
-      <div className="title">{p.title}</div>
-      {p.detail && <div className="detail">{p.detail}</div>}
+      <div className="kind">{kindLabel(p)}</div>
+      <RequestText p={p} />
       {p.kind === 'approval' ? (
         <div className="actions">
           <button className="btn primary" disabled={busy} onClick={() => act(true)}>
@@ -157,14 +206,13 @@ export function PendingTray({ route }: { route: string }) {
   return (
     <div className="overlay">
       <div className="modal" role="dialog" aria-modal="true">
-        <div className="badge">{KIND[p.kind]}</div>
-        <h2>{p.title}</h2>
+        <div className="badge">{kindLabel(p)}</div>
+        <RequestText p={p} title="h2" />
         {p.handoffId && (
           <div style={{ margin: '12px 0' }}>
             <TaskLine id={p.handoffId} thumb />
           </div>
         )}
-        {p.detail && <div className="detail">{p.detail}</div>}
         {p.kind === 'approval' ? (
           <div className="foot">
             <button className="btn" disabled={busy} onClick={() => act(false)}>

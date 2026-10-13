@@ -1924,12 +1924,48 @@ a.list-item:hover,
   line-height: 1.55;
   white-space: pre-wrap;
 }
+.ask-card .title,
+.modal .title {
+  line-height: 1.4;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+/* What a question is based on: one fact per line, labels in a column when there are any. */
+.detail-lines {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--sunk);
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+  display: grid;
+  gap: 6px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.detail-lines li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.detail-lines .label {
+  flex: none;
+  min-width: 72px;
+  max-width: 40%;
+  color: var(--ink-3);
+  font-weight: 500;
+}
 .ask-card .actions,
 .ask-card form {
   margin-top: 14px;
 }
 .ask-card .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .ask-card .actions.end,
@@ -2123,6 +2159,13 @@ a.list-item:hover,
 }
 .steps .d {
   overflow-wrap: anywhere;
+}
+.steps li:not(.now) .d .t {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
 }
 .steps .u {
   display: block;

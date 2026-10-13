@@ -91,8 +91,16 @@ const actionTools = {
     inputSchema: z.object({ name: z.string().describe('short file name, e.g. "parking-qr"') }),
   }),
   ask_user: tool({
-    description: 'Ask the user for information you cannot find and that is not in memory (e.g. which option they prefer).',
-    inputSchema: z.object({ question: z.string() }),
+    description:
+      'Ask the user for information you cannot find and that is not in memory (e.g. which option they prefer). ' +
+      'Keep the question to one short sentence; put what they need to know to answer in context, one fact per line.',
+    inputSchema: z.object({
+      question: z.string().describe('one short, direct question, e.g. "Submit the Swiggy application without a résumé?"'),
+      context: z
+        .string()
+        .optional()
+        .describe('what you see that helps them answer, one short fact per line, e.g. "Role: Associate SDE, Bengaluru (hybrid)\nRésumé: none attached yet"'),
+    }),
   }),
   get_verification: tool({
     description:
@@ -428,10 +436,7 @@ export async function runHandoff(opts: {
         case 'ask_user': {
           setStatus(hid, 'waiting');
           record('ask', input.question);
-          const answer = await askUser(
-            { title: 'The browser agent has a question', detail: input.question, handoffId: hid, conversationId: opts.conversationId },
-            signal,
-          );
+          const answer = await askUser({ title: input.question, detail: input.context ?? '', handoffId: hid, conversationId: opts.conversationId }, signal);
           setStatus(hid, 'running');
           state.steer.push(answer ? `Answer to "${input.question}": ${answer}` : `The user did not answer "${input.question}". Decide sensibly or finish.`);
           break;
